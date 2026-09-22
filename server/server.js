@@ -109,7 +109,7 @@ app.get("/api/equipment/:id", (req, res) => {
 });
 
 app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) => {
-  const { name, model, category, icon, brochureUrl } = req.body;
+  const { name, model, category, icon, brochureUrl, stockUrl } = req.body;
   if (!name || !category) {
     if (req.file) removeUploadedFile(req.file.filename);
     return res.status(400).json({ error: "name and category are required" });
@@ -121,6 +121,7 @@ app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) 
     icon,
     specs: parseSpecs(req.body.specs),
     brochureUrl: brochureUrl || null,
+    stockUrl: stockUrl || null,
     imagePath: req.file ? `/uploads/${req.file.filename}` : null,
   });
   res.status(201).json(item);
@@ -133,7 +134,7 @@ app.put("/api/equipment/:id", requireAdminAuth, upload.single("image"), (req, re
     return res.status(404).json({ error: "Not found" });
   }
 
-  const { name, model, category, icon, brochureUrl, removeImage } = req.body;
+  const { name, model, category, icon, brochureUrl, stockUrl, removeImage } = req.body;
   const data = {
     name,
     model,
@@ -141,6 +142,7 @@ app.put("/api/equipment/:id", requireAdminAuth, upload.single("image"), (req, re
     icon,
     specs: req.body.specs !== undefined ? parseSpecs(req.body.specs) : undefined,
     brochureUrl: brochureUrl !== undefined ? (brochureUrl || null) : undefined,
+    stockUrl: stockUrl !== undefined ? (stockUrl || null) : undefined,
   };
 
   if (req.file) {

@@ -60,6 +60,7 @@ function create(data) {
     specs: data.specs || {},
     imagePath: data.imagePath || null,
     brochureUrl: data.brochureUrl || null,
+    stockUrl: data.stockUrl || null,
     createdAt: now,
     updatedAt: now,
   };
@@ -82,6 +83,7 @@ function update(id, data) {
     icon: data.icon ?? existing.icon,
     specs: data.specs ?? existing.specs,
     brochureUrl: data.brochureUrl !== undefined ? data.brochureUrl : existing.brochureUrl,
+    stockUrl: data.stockUrl !== undefined ? data.stockUrl : existing.stockUrl,
     imagePath: data.imagePath !== undefined ? data.imagePath : existing.imagePath,
     updatedAt: new Date().toISOString(),
   };

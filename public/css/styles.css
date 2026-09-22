@@ -541,24 +541,38 @@ body {
 
 .inspector-position { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
 
-.brochure-btn {
+.inspector-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.action-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 10px;
-  margin-bottom: 14px;
+  gap: 3px;
+  padding: 9px 6px;
   background: var(--brand-primary);
   color: #fff;
-  border-radius: 5px;
-  font-size: 12.5px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11.5px;
   font-weight: 600;
   text-decoration: none;
+  text-align: center;
   box-sizing: border-box;
+  cursor: pointer;
+  font-family: inherit;
 }
-.brochure-btn:hover { background: var(--brand-primary-dark); }
-.brochure-icon { font-size: 13px; }
+.action-btn:hover { background: var(--brand-primary-dark); }
+.action-btn:disabled {
+  background: #f1f2f4;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.action-btn-icon { font-size: 15px; }
 
 .inspector-notes-label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px; }
 #inspector-notes {

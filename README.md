@@ -63,11 +63,16 @@ either way — reps don't need a login to build layouts.
   element.
 - Equipment renders free-standing on canvas and in the catalog panel —
   icon on top, name below, no card/box border by default (AggFlow's
-  actual convention: a monochrome icon represents the equipment *type*,
-  the name/model is a separate label, not baked into a bordered tile).
-  A thin category-color tick under the icon is the only color-coding.
-  Selecting a node shows a dashed outline as affordance, not a permanent
-  border.
+  actual convention: an icon represents the equipment *type*, the
+  name/model is a separate label, not baked into a bordered tile). Icons
+  use a consistent red/gray/black/yellow illustration style (chassis and
+  moving parts in red, hopper/housing in gray, tracks/belts/outlines in
+  dark charcoal, safety-yellow accents) matching the reference equipment
+  illustrations provided, distinct per equipment type (jaw/cone/impact
+  crushers, screens, conveyors, stackers, stockpiles, washers, shredders,
+  mixers). A thin category-color tick under the icon adds category
+  color-coding on top of that. Selecting a node shows a dashed outline as
+  affordance, not a permanent border.
 - Tools panel: drag a Rectangle, Ellipse, Note, Line, or Stockpile onto
   the canvas as a freeform annotation, independent of equipment
   (drawio-style basic shapes). Each is draggable, resizable (corner
@@ -89,9 +94,12 @@ either way — reps don't need a login to build layouts.
   dragging to place freely without snapping.
 - Undo/redo (toolbar buttons or Ctrl+Z / Ctrl+Shift+Z), covering adds,
   deletes, moves, resizes, and connections
-- Inspector panel: selected item's spec sheet, position, a **View
-  Brochure** button (only shown when that equipment has a brochure link
-  set in the catalog), and a free-text notes field
+- Inspector panel: selected item's Make (brand), Model, Category, and
+  Weight (pulled out of the spec sheet if present) as a detail table,
+  followed by any other specs, position, **Check Stock** and **View
+  Brochure** buttons (live links when the item has a stock/brochure URL
+  set in the catalog, otherwise disabled with a tooltip explaining why),
+  and a free-text notes field
 - Zoom (scroll wheel, toolbar buttons) and pan (drag empty canvas)
 - Export to a branded PNG (via html2canvas), including a simple equipment
   list alongside the flow diagram
@@ -101,11 +109,13 @@ either way — reps don't need a login to build layouts.
 
 **Admin (`admin.html`)**
 
-- Table of every catalog item with thumbnail, name, model, category, and
-  brochure status
+- Table of every catalog item with thumbnail, name, model, category,
+  brochure status, and stock-check status
 - Add/edit form: name, model, category, a placeholder icon (used as the
   fallback shape until a real image is uploaded), an image upload, an
-  arbitrary list of spec rows (label + value), and a brochure link
+  arbitrary list of spec rows (label + value), a brochure link, and a
+  stock-check link (populates the Inspector's Check Stock/View Brochure
+  buttons on the Builder side)
 - Delete, with confirmation
 
 Changes made here are what reps see the next time they load or refresh the
@@ -225,9 +235,9 @@ wipe local disk on every redeploy, which would silently erase the catalog.
 
 - Real logo file — see note above.
 - Real equipment lineup is now in (77 products from the spreadsheet), but
-  specs, product photos, and brochure links are still empty — the admin UI
-  is ready for these, someone needs to fill them in (see "Product images"
-  above for photos specifically).
+  specs, product photos, brochure links, and stock-check links are still
+  empty — the admin UI is ready for all of these, someone needs to fill
+  them in (see "Product images" above for photos specifically).
 - Whether reps can see each other's customer layouts, or only their own —
   this determines the data model for saved-layout persistence and hasn't
   been decided.

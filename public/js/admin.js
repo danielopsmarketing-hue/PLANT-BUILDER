@@ -26,6 +26,7 @@ class AdminApp {
       btnRemoveImage: document.getElementById("btn-remove-image"),
       specsRows: document.getElementById("specs-rows"),
       fieldBrochure: document.getElementById("field-brochure"),
+      fieldStock: document.getElementById("field-stock"),
     };
 
     this.bind();
@@ -78,7 +79,7 @@ class AdminApp {
 
   renderTable() {
     if (this.equipment.length === 0) {
-      this.els.tableBody.innerHTML = `<tr><td colspan="6" class="admin-loading">No equipment yet. Click "Add Equipment" to create the first listing.</td></tr>`;
+      this.els.tableBody.innerHTML = `<tr><td colspan="7" class="admin-loading">No equipment yet. Click "Add Equipment" to create the first listing.</td></tr>`;
       return;
     }
 
@@ -93,6 +94,9 @@ class AdminApp {
         const brochureCell = item.brochureUrl
           ? `<a href="${escapeAttr(item.brochureUrl)}" target="_blank" rel="noopener noreferrer">View</a>`
           : `<span class="text-muted">&mdash;</span>`;
+        const stockCell = item.stockUrl
+          ? `<a href="${escapeAttr(item.stockUrl)}" target="_blank" rel="noopener noreferrer">View</a>`
+          : `<span class="text-muted">&mdash;</span>`;
         return `
           <tr data-id="${item.id}">
             <td class="admin-thumb-cell">${thumb}</td>
@@ -100,6 +104,7 @@ class AdminApp {
             <td>${escapeHtml(item.model || "")}</td>
             <td>${escapeHtml(categoryLabel)}</td>
             <td>${brochureCell}</td>
+            <td>${stockCell}</td>
             <td class="admin-actions-cell">
               <button type="button" class="link-btn" data-action="edit" data-id="${item.id}">Edit</button>
               <button type="button" class="link-btn danger-link" data-action="delete" data-id="${item.id}">Delete</button>
@@ -135,6 +140,7 @@ class AdminApp {
       this.els.fieldCategory.value = item.category;
       this.els.fieldIcon.value = item.icon || "generic";
       this.els.fieldBrochure.value = item.brochureUrl || "";
+      this.els.fieldStock.value = item.stockUrl || "";
       const entries = Object.entries(item.specs || {});
       if (entries.length === 0) this.addSpecRow("", "");
       else for (const [k, v] of entries) this.addSpecRow(k, v);
@@ -197,6 +203,7 @@ class AdminApp {
     formData.set("icon", this.els.fieldIcon.value);
     formData.set("specs", JSON.stringify(this.collectSpecs()));
     formData.set("brochureUrl", this.els.fieldBrochure.value.trim());
+    formData.set("stockUrl", this.els.fieldStock.value.trim());
     if (this.newImageFile) formData.set("image", this.newImageFile);
     if (this.removeImageFlag) formData.set("removeImage", "true");
 

@@ -424,14 +424,45 @@ class PlantBuilderApp {
       const spec = this.getEquipmentById(node.equipmentId);
       if (!spec) return;
       content.className = "";
-      const specRows = Object.entries(spec.specs || {})
+
+      // Data note: this catalog's `model` field actually holds the brand
+      // (e.g. "Terex Finlay") and `name` holds the specific model string
+      // (e.g. "J-1175 Jaw Crusher") -- an artifact of the original
+      // spreadsheet's Make/Model columns. Label them correctly here
+      // rather than renaming the stored fields everywhere.
+      const categoryLabel = this.categories.find((c) => c.id === spec.category)?.label || spec.category;
+      const specsEntries = Object.entries(spec.specs || {});
+      const weightEntry = specsEntries.find(([k]) => k.toLowerCase() === "weight");
+      const otherSpecs = specsEntries.filter(([k]) => k.toLowerCase() !== "weight");
+
+      const detailRows = [
+        ["Make", spec.model || "—"],
+        ["Model", spec.name],
+        ["Category", categoryLabel],
+        ["Weight", weightEntry ? weightEntry[1] : "Not specified"],
+        ...otherSpecs,
+      ]
         .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`)
         .join("");
-      const brochureBtn = spec.brochureUrl
-        ? `<a class="brochure-btn" href="${escapeAttr(spec.brochureUrl)}" target="_blank" rel="noopener noreferrer">
-             <span class="brochure-icon">&#128196;</span> View Brochure
-           </a>`
-        : "";
+
+      const actionBtns = `
+        <div class="inspector-actions">
+          ${spec.stockUrl
+            ? `<a class="action-btn" href="${escapeAttr(spec.stockUrl)}" target="_blank" rel="noopener noreferrer">
+                 <span class="action-btn-icon">&#128230;</span> Check Stock
+               </a>`
+            : `<button class="action-btn" disabled title="No stock link set for this item">
+                 <span class="action-btn-icon">&#128230;</span> Check Stock
+               </button>`}
+          ${spec.brochureUrl
+            ? `<a class="action-btn" href="${escapeAttr(spec.brochureUrl)}" target="_blank" rel="noopener noreferrer">
+                 <span class="action-btn-icon">&#128196;</span> View Brochure
+               </a>`
+            : `<button class="action-btn" disabled title="No brochure link set for this item">
+                 <span class="action-btn-icon">&#128196;</span> View Brochure
+               </button>`}
+        </div>`;
+
       content.innerHTML = `
         <div class="inspector-header">
           <span class="inspector-icon">${this.thumbHtml(spec)}</span>
@@ -440,9 +471,9 @@ class PlantBuilderApp {
             <div class="inspector-model">${escapeHtml(spec.model || "")}</div>
           </div>
         </div>
-        <table class="inspector-specs">${specRows}</table>
+        <table class="inspector-specs">${detailRows}</table>
+        ${actionBtns}
         <div class="inspector-position">Position: ${Math.round(node.x)}, ${Math.round(node.y)}</div>
-        ${brochureBtn}
         <label class="inspector-notes-label" for="inspector-notes">Notes</label>
         <textarea id="inspector-notes" rows="5" placeholder="Free-text notes for this item…">${escapeHtml(node.notes)}</textarea>
         <button id="inspector-delete" class="danger">Delete from canvas</button>

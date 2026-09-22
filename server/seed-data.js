@@ -27,6 +27,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -36,6 +37,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -45,6 +47,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -54,6 +57,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -63,6 +67,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -72,6 +77,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -81,6 +87,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -90,6 +97,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -99,6 +107,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -108,6 +117,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -117,6 +127,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -126,6 +137,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -135,6 +147,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -144,6 +157,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -153,6 +167,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -162,6 +177,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -171,6 +187,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -180,6 +197,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -189,6 +207,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -198,6 +217,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -207,6 +227,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -216,6 +237,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -225,6 +247,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -234,6 +257,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -243,6 +267,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -252,6 +277,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -261,6 +287,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -270,6 +297,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "crushing",
@@ -279,6 +307,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -288,6 +317,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -297,6 +327,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -306,6 +337,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -315,6 +347,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -324,6 +357,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -333,6 +367,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -342,6 +377,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -351,6 +387,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "feeding",
@@ -360,6 +397,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "feeding",
@@ -369,6 +407,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "feeding",
@@ -378,6 +417,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "feeding",
@@ -387,6 +427,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -396,6 +437,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -405,6 +447,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -414,6 +457,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -423,6 +467,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -432,6 +477,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -441,6 +487,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -450,6 +497,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -459,6 +507,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -468,6 +517,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -477,6 +527,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -486,6 +537,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -495,6 +547,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -504,6 +557,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -513,6 +567,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -522,6 +577,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -531,6 +587,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "mixing",
@@ -540,6 +597,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -549,6 +607,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -558,6 +617,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -567,6 +627,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -576,6 +637,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -585,6 +647,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "screening",
@@ -594,6 +657,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "conveying",
@@ -603,6 +667,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -612,6 +677,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -621,6 +687,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -630,6 +697,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "shredding",
@@ -639,6 +707,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -648,6 +717,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -657,6 +727,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -666,6 +737,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -675,6 +747,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -684,6 +757,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -693,6 +767,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -702,6 +777,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
   {
     category: "washing",
@@ -711,6 +787,7 @@ const EQUIPMENT = [
     specs: {},
     imagePath: null,
     brochureUrl: null,
+    stockUrl: null,
   },
 ];
 
