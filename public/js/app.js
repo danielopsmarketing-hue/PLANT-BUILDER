@@ -16,6 +16,7 @@ const SHAPE_DEFAULTS = {
   rect: { width: 140, height: 90 },
   ellipse: { width: 140, height: 90 },
   note: { width: 160, height: 90 },
+  stockpile: { width: 120, height: 100 },
 };
 const LINE_DEFAULT_LENGTH = 140;
 const GRID_SIZE = 24; // matches the visual canvas background grid
@@ -136,7 +137,6 @@ class PlantBuilderApp {
       for (const item of items) {
         const el = document.createElement("div");
         el.className = "catalog-item";
-        el.draggable = true;
         el.dataset.equipmentId = item.id;
         el.innerHTML = `
           <span class="catalog-item-icon">${this.thumbHtml(item)}</span>
@@ -144,9 +144,10 @@ class PlantBuilderApp {
             <span class="catalog-item-name">${escapeHtml(item.name)}</span>
             <span class="catalog-item-model">${escapeHtml(item.model || "")}</span>
           </span>`;
-        el.addEventListener("dragstart", (e) => {
-          e.dataTransfer.setData("text/equipment-id", item.id);
-          e.dataTransfer.effectAllowed = "copy";
+        el.addEventListener("mousedown", (e) => {
+          this.startPaletteDrag(e, this.thumbHtml(item), (x, y) => {
+            this.addNode(item.id, x - DEFAULT_NODE_WIDTH / 2, y - DEFAULT_NODE_HEIGHT / 2);
+          });
         });
         itemsWrap.appendChild(el);
       }
@@ -157,6 +158,54 @@ class PlantBuilderApp {
     if (list.children.length === 0) {
       list.innerHTML = `<p class="catalog-loading">No equipment matches "${escapeHtml(this.searchTerm)}".</p>`;
     }
+  }
+
+  // Custom drag from a palette (catalog item or tool item) onto the canvas.
+  // Native HTML5 drag-and-drop was the source of a real bug: the browser's
+  // own drag gesture doesn't track the same way our other mouse-driven
+  // interactions do, and the ghost/drop state could linger or misbehave
+  // once the cursor left the source element. This is the same
+  // mousedown/mousemove/mouseup pattern used for moving nodes, so it
+  // behaves identically and predictably.
+  startPaletteDrag(e, ghostHtml, onDrop) {
+    e.preventDefault();
+    const ghost = document.createElement("div");
+    ghost.className = "palette-drag-ghost";
+    ghost.innerHTML = ghostHtml;
+    document.body.appendChild(ghost);
+
+    const moveGhost = (clientX, clientY) => {
+      ghost.style.left = `${clientX}px`;
+      ghost.style.top = `${clientY}px`;
+    };
+    moveGhost(e.clientX, e.clientY);
+
+    const isOverCanvas = (clientX, clientY) => {
+      const rect = this.els.viewport.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    };
+
+    let overCanvas = false;
+    const onMove = (ev) => {
+      moveGhost(ev.clientX, ev.clientY);
+      const nowOver = isOverCanvas(ev.clientX, ev.clientY);
+      if (nowOver !== overCanvas) {
+        overCanvas = nowOver;
+        this.els.viewport.classList.toggle("drag-over", overCanvas);
+      }
+    };
+    const onUp = (ev) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      ghost.remove();
+      this.els.viewport.classList.remove("drag-over");
+      if (isOverCanvas(ev.clientX, ev.clientY)) {
+        const { x, y } = this.clientToWorld(ev.clientX, ev.clientY);
+        onDrop(x, y);
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   thumbHtml(item) {
@@ -173,9 +222,13 @@ class PlantBuilderApp {
 
   bindToolsPanel() {
     for (const el of document.querySelectorAll(".tool-item")) {
-      el.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/tool-kind", el.dataset.toolKind);
-        e.dataTransfer.effectAllowed = "copy";
+      const kind = el.dataset.toolKind;
+      el.addEventListener("mousedown", (e) => {
+        const ghostHtml = el.querySelector("svg").outerHTML;
+        this.startPaletteDrag(e, ghostHtml, (x, y) => {
+          if (kind === "line") this.addLine(x, y);
+          else this.addShape(kind, x, y);
+        });
       });
     }
   }
@@ -202,22 +255,6 @@ class PlantBuilderApp {
 
   bindCanvasEvents() {
     const viewport = this.els.viewport;
-
-    viewport.addEventListener("dragover", (e) => e.preventDefault());
-    viewport.addEventListener("drop", (e) => {
-      e.preventDefault();
-      const equipmentId = e.dataTransfer.getData("text/equipment-id");
-      if (equipmentId) {
-        const { x, y } = this.clientToWorld(e.clientX, e.clientY);
-        this.addNode(equipmentId, x - DEFAULT_NODE_WIDTH / 2, y - DEFAULT_NODE_HEIGHT / 2);
-        return;
-      }
-      const toolKind = e.dataTransfer.getData("text/tool-kind");
-      if (!toolKind) return;
-      const { x, y } = this.clientToWorld(e.clientX, e.clientY);
-      if (toolKind === "line") this.addLine(x, y);
-      else this.addShape(toolKind, x, y);
-    });
 
     viewport.addEventListener("wheel", (e) => {
       e.preventDefault();
@@ -330,7 +367,7 @@ class PlantBuilderApp {
     const node = this.nodes.get(id);
     if (node) return this.getEquipmentById(node.equipmentId)?.name || "?";
     const shape = this.shapes.get(id);
-    if (shape) return { rect: "Rectangle", ellipse: "Ellipse", note: "Note" }[shape.kind] || "Shape";
+    if (shape) return { rect: "Rectangle", ellipse: "Ellipse", note: "Note", stockpile: "Stockpile" }[shape.kind] || "Shape";
     return "?";
   }
 
@@ -417,7 +454,7 @@ class PlantBuilderApp {
     } else if (this.selection.type === "shape") {
       const shape = this.shapes.get(this.selection.id);
       if (!shape) return;
-      const kindLabel = { rect: "Rectangle", ellipse: "Ellipse", note: "Note" }[shape.kind] || "Shape";
+      const kindLabel = { rect: "Rectangle", ellipse: "Ellipse", note: "Note", stockpile: "Stockpile" }[shape.kind] || "Shape";
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
@@ -504,17 +541,15 @@ class PlantBuilderApp {
       el.style.top = `${node.y}px`;
       el.style.width = `${node.width}px`;
       el.style.height = `${node.height}px`;
-      el.style.borderColor = spec ? colorForCategory(spec.category) : "#999";
+      const tickColor = spec ? colorForCategory(spec.category) : "#999";
       el.innerHTML = `
         <div class="node-icon">${spec ? this.thumbHtml(spec) : ""}</div>
         <div class="node-label">
+          <div class="node-category-tick" style="background:${tickColor}"></div>
           <div class="node-name">${spec ? escapeHtml(spec.name) : "Unknown equipment"}</div>
           <div class="node-model">${spec ? escapeHtml(spec.model || "") : ""}</div>
         </div>
-        <div class="connect-dot connect-dot-n" data-side="n"></div>
-        <div class="connect-dot connect-dot-e" data-side="e"></div>
-        <div class="connect-dot connect-dot-s" data-side="s"></div>
-        <div class="connect-dot connect-dot-w" data-side="w"></div>
+        ${connectDotsHtml()}
         <div class="resize-handle"></div>
       `;
 
@@ -787,12 +822,13 @@ class PlantBuilderApp {
       el.style.top = `${shape.y}px`;
       el.style.width = `${shape.width}px`;
       el.style.height = `${shape.height}px`;
+      const body = shape.kind === "stockpile"
+        ? `<div class="shape-stockpile-icon">${iconSvg("stockpile", "stockpiling")}</div>
+           <div class="shape-text shape-text-under">${escapeHtml(shape.text || "")}</div>`
+        : `<div class="shape-text">${escapeHtml(shape.text || "")}</div>`;
       el.innerHTML = `
-        <div class="shape-text">${escapeHtml(shape.text || "")}</div>
-        <div class="connect-dot connect-dot-n" data-side="n"></div>
-        <div class="connect-dot connect-dot-e" data-side="e"></div>
-        <div class="connect-dot connect-dot-s" data-side="s"></div>
-        <div class="connect-dot connect-dot-w" data-side="w"></div>
+        ${body}
+        ${connectDotsHtml()}
         <div class="resize-handle"></div>
       `;
       el.addEventListener("mousedown", (e) => this.onShapeMouseDown(e, shape));
@@ -1210,6 +1246,13 @@ class PlantBuilderApp {
     container.appendChild(table);
     return container;
   }
+}
+
+function connectDotsHtml() {
+  const arrows = { n: "&#8593;", e: "&#8594;", s: "&#8595;", w: "&#8592;" };
+  return Object.entries(arrows)
+    .map(([side, glyph]) => `<div class="connect-dot connect-dot-${side}" data-side="${side}">${glyph}</div>`)
+    .join("");
 }
 
 function clamp(value, min, max) {

@@ -1,4 +1,4 @@
-import { iconSvg, colorForCategory } from "./icons.js";
+import { iconSvg } from "./icons.js";
 import { fetchCategories, fetchEquipment, createEquipment, updateEquipment, deleteEquipment } from "./api.js";
 
 class AdminApp {
@@ -89,7 +89,7 @@ class AdminApp {
         const categoryLabel = this.categories.find((c) => c.id === item.category)?.label || item.category;
         const thumb = item.imagePath
           ? `<img src="${item.imagePath}" class="admin-thumb-img" alt="${escapeHtml(item.name)}" />`
-          : `<span class="admin-thumb-icon" style="color:${colorForCategory(item.category)}">${iconSvg(item.icon, item.category)}</span>`;
+          : `<span class="admin-thumb-icon">${iconSvg(item.icon, item.category)}</span>`;
         const brochureCell = item.brochureUrl
           ? `<a href="${escapeAttr(item.brochureUrl)}" target="_blank" rel="noopener noreferrer">View</a>`
           : `<span class="text-muted">&mdash;</span>`;

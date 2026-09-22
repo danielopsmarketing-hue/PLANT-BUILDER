@@ -54,22 +54,36 @@ either way — reps don't need a login to build layouts.
 
 **Builder (`index.html`)**
 
-- Tools panel: drag a Rectangle, Ellipse, Note, or Line onto the canvas as
-  a freeform annotation, independent of equipment (drawio-style basic
-  shapes). Each is draggable, resizable (rect/ellipse/note via corner
-  handle), and editable — rect/ellipse/note get a text label through the
-  Inspector, lines get two draggable endpoint handles when selected.
-  Delete like anything else on the canvas; all of it participates in
-  undo/redo and gets included in the PNG export.
+- Custom drag-and-drop (not native HTML5 DnD): dragging a catalog item or
+  a Tools item spawns a floating preview that follows the cursor exactly,
+  with the canvas highlighting as a drop target. Dropping outside the
+  canvas cancels cleanly. This replaced an earlier native-DnD
+  implementation that was the source of a real bug — the browser's own
+  drag gesture didn't track reliably once the cursor left the source
+  element.
+- Equipment renders free-standing on canvas and in the catalog panel —
+  icon on top, name below, no card/box border by default (AggFlow's
+  actual convention: a monochrome icon represents the equipment *type*,
+  the name/model is a separate label, not baked into a bordered tile).
+  A thin category-color tick under the icon is the only color-coding.
+  Selecting a node shows a dashed outline as affordance, not a permanent
+  border.
+- Tools panel: drag a Rectangle, Ellipse, Note, Line, or Stockpile onto
+  the canvas as a freeform annotation, independent of equipment
+  (drawio-style basic shapes). Each is draggable, resizable (corner
+  handle), and editable — text label through the Inspector, lines get two
+  draggable endpoint handles when selected. Delete like anything else on
+  the canvas; all of it participates in undo/redo and the PNG export.
 - Equipment catalog panel, grouped by category, searchable, collapsible
-  groups, drag-and-drop onto canvas
+  groups, 2-column icon grid.
 - Canvas nodes: place, move, resize (drag the corner handle, like drawio),
-  select, delete
-- Directional connectors, drawio-style magnets: hover a node *or* a Tools
-  shape to reveal four connection dots, drag from one to another (any mix
-  of equipment/shapes) to draw an arrow; click a connector to select it,
-  then delete. Freeform lines magnet-snap to a node/shape edge too when you
-  drag an endpoint near one, or fall back to the grid otherwise.
+  select, delete.
+- Directional connectors, drawio-style hover arrows: hover a node *or* a
+  Tools shape to reveal four arrow chevrons sitting outside its edges
+  (not dots on the border), drag from one to another (any mix of
+  equipment/shapes) to draw an arrow; click a connector to select it,
+  then delete. Freeform lines magnet-snap to a node/shape edge too when
+  you drag an endpoint near one, or fall back to the grid otherwise.
 - Snap-to-grid: dropping, moving, or resizing a node or shape snaps to the
   24px grid (matching the visible background grid). Hold Alt while
   dragging to place freely without snapping.
@@ -113,16 +127,24 @@ page, or re-run the same search-and-download approach from an environment
 with normal web access (e.g. Claude Code on your own machine).
 
 Until real photos are in, the placeholder icons (`js/icons.js`) carry more
-of the visual load than before: crushers, screens, and the stacker now
-render as a small mobile-plant illustration — tracked crawler base, the
-crusher/screen body, an angled discharge conveyor with a roller at the
-tip — matching how these machines are actually drawn in flowsheet
-diagrams (crusher body shape differs per type: jaw shows a flywheel,
-cone shows the tapered mantle + feed ring, impact shows the rotor).
-These are still hand-drawn placeholders, not photos — they render both
-in the catalog panel and on canvas nodes (same `thumbHtml()`
-path), and get replaced automatically the moment a real image is uploaded
-for that item.
+of the visual load than before. They're modeled on how AggFlow (an actual
+aggregate-flowsheet tool) presents equipment, confirmed via its own help
+docs rather than guessed: a monochrome icon represents the equipment
+*type* (a generic "jaw crusher" silhouette), while the specific
+make/model is a separate text label — AggFlow itself right-clicks a
+placed icon to pick manufacturer/model, and to recolor it, rather than
+baking a brand or category color into the icon. This app follows the
+same split: `js/icons.js` icons are neutral slate, not colored per
+category, and category color shows only as a small accent tick under the
+icon. Crushers, screens, and the stacker render as a small mobile-plant
+illustration — tracked crawler base, the crusher/screen body, an angled
+discharge conveyor with a roller at the tip — matching how these machines
+are actually drawn in flowsheet diagrams (crusher body shape differs per
+type: jaw shows a flywheel, cone shows the tapered mantle + feed ring,
+impact shows the rotor). These are still hand-drawn placeholders, not
+photos — they render both in the catalog panel and on canvas nodes (same
+`thumbHtml()` path), and get replaced automatically the moment a real
+image is uploaded for that item.
 
 ### Project layout
 

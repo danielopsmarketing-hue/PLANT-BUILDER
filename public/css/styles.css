@@ -33,10 +33,13 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 16px;
-  background: var(--brand-primary);
+  padding: 12px 20px;
+  background: linear-gradient(180deg, #1c4d8c 0%, var(--brand-primary) 60%, var(--brand-primary-dark) 100%);
   color: #fff;
   flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  position: relative;
+  z-index: 10;
 }
 
 .brand {
@@ -93,23 +96,32 @@ body {
 }
 
 .toolbar button, .toolbar select {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   color: #fff;
-  padding: 6px 12px;
-  border-radius: 5px;
-  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
 }
 
-.toolbar button:hover { background: rgba(255, 255, 255, 0.18); }
+.toolbar button:hover { background: rgba(255, 255, 255, 0.22); box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.toolbar button:active { transform: translateY(1px); }
 .toolbar button:disabled { opacity: 0.35; cursor: not-allowed; }
-.toolbar button:disabled:hover { background: rgba(255, 255, 255, 0.08); }
+.toolbar button:disabled:hover { background: rgba(255, 255, 255, 0.08); box-shadow: none; }
 .toolbar button.active { background: var(--brand-accent); border-color: var(--brand-accent); }
-.toolbar button.primary { background: var(--brand-accent); border-color: var(--brand-accent); font-weight: 600; }
+.toolbar button.primary {
+  background: linear-gradient(180deg, #3b7fe0, var(--brand-accent));
+  border-color: var(--brand-accent);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(47, 111, 214, 0.4);
+}
+.toolbar button.primary:hover { box-shadow: 0 3px 10px rgba(47, 111, 214, 0.55); }
 .toolbar button.danger { border-color: rgba(220, 38, 38, 0.6); }
 .toolbar button.danger:hover { background: rgba(220, 38, 38, 0.35); }
-#btn-undo, #btn-redo { font-size: 16px; padding: 5px 10px; line-height: 1; }
+#btn-undo, #btn-redo { font-size: 17px; padding: 8px 13px; line-height: 1; }
 
 #zoom-level {
   font-size: 13px;
@@ -126,25 +138,43 @@ body {
 }
 
 .catalog-panel, .inspector-panel {
-  width: 260px;
+  width: 268px;
   flex-shrink: 0;
   background: var(--panel-bg);
   border-right: 1px solid var(--border);
-  padding: 14px;
+  padding: 16px;
   overflow-y: auto;
+  position: relative;
+  z-index: 5;
 }
+.catalog-panel { box-shadow: 2px 0 6px rgba(0,0,0,0.04); }
 
 .inspector-panel {
   border-right: none;
   border-left: 1px solid var(--border);
+  box-shadow: -2px 0 6px rgba(0,0,0,0.04);
 }
 
 .catalog-panel h2, .inspector-panel h2 {
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
+  font-weight: 700;
   margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.catalog-panel h2::before, .inspector-panel h2::before {
+  content: "";
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--brand-accent);
+  display: inline-block;
 }
 
 .catalog-search-row {
@@ -197,25 +227,42 @@ body {
   transition: transform 0.15s ease;
 }
 .catalog-group-heading .chevron.collapsed { transform: rotate(-90deg); }
-.catalog-group-items { margin-top: 4px; }
+.catalog-group-items {
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
 
+/* Free-standing palette tile -- icon on top, name below, no card border by
+   default (matches how the same item looks once it's a node on canvas). */
 .catalog-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--border);
+  gap: 4px;
+  padding: 8px 4px;
   border-radius: 6px;
-  margin-bottom: 6px;
   cursor: grab;
-  background: #fafbfc;
+  background: transparent;
+  text-align: center;
+  transition: background 0.1s ease;
 }
-.catalog-item:hover { border-color: var(--brand-accent); background: #fff; }
-.catalog-item-icon { width: 28px; height: 28px; flex-shrink: 0; }
+.catalog-item:hover { background: #eef2f7; }
+.catalog-item-icon { width: 34px; height: 34px; flex-shrink: 0; }
 .catalog-item-icon svg { width: 100%; height: 100%; }
-.catalog-item-label { display: flex; flex-direction: column; min-width: 0; }
-.catalog-item-name { font-size: 12.5px; font-weight: 600; }
-.catalog-item-model { font-size: 11px; color: var(--text-muted); }
+.catalog-item-label { display: flex; flex-direction: column; min-width: 0; width: 100%; }
+.catalog-item-name {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.catalog-item-model { font-size: 9.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .catalog-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; }
 .catalog-hint a { color: var(--brand-accent); }
@@ -235,16 +282,23 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 6px;
+  gap: 6px;
+  padding: 12px 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: #fafbfc;
   cursor: grab;
   color: var(--text-muted);
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
 }
-.tool-item:hover { border-color: var(--brand-accent); background: #fff; color: var(--brand-accent); }
-.tool-item svg { width: 22px; height: 22px; }
+.tool-item:hover {
+  border-color: var(--brand-accent);
+  background: #fff;
+  color: var(--brand-accent);
+  box-shadow: 0 2px 6px rgba(47, 111, 214, 0.15);
+  transform: translateY(-1px);
+}
+.tool-item svg { width: 24px; height: 24px; }
 .tool-item span { font-size: 11px; font-weight: 600; color: var(--text); }
 
 /* ---------- Canvas ---------- */
@@ -258,8 +312,26 @@ body {
     linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px);
   background-size: 24px 24px;
   cursor: grab;
+  transition: box-shadow 0.12s ease;
 }
 .canvas-viewport:active { cursor: grabbing; }
+.canvas-viewport.drag-over { box-shadow: inset 0 0 0 3px var(--brand-accent); }
+
+/* Floating preview that follows the cursor during a palette drag (custom
+   mouse-driven drag-and-drop, not native HTML5 DnD -- see startPaletteDrag). */
+.palette-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0.85;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.25));
+}
+.palette-drag-ghost svg, .palette-drag-ghost img { width: 100%; height: 100%; }
 
 .canvas-world {
   position: absolute;
@@ -301,51 +373,73 @@ body {
   max-width: 300px;
 }
 
+/* Free-standing icon + name, AggFlow-style -- no card/box by default. A
+   very light wash and a dashed outline only appear on hover/selection,
+   as affordance, not as a permanent container. */
 .node {
   position: absolute;
-  background: #fff;
-  border: 2px solid #999;
+  background: transparent;
   border-radius: 8px;
-  padding: 8px;
+  padding: 6px 4px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 4px;
   cursor: grab;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   user-select: none;
+  text-align: center;
+  transition: background 0.1s ease;
 }
-.node:active { cursor: grabbing; }
-.node.selected { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
-.node.connect-target { outline: 3px solid #16a34a; outline-offset: 2px; }
-.node-icon { width: 34px; height: 34px; flex-shrink: 0; }
+.node:hover { background: rgba(255, 255, 255, 0.65); }
+.node.selected {
+  background: rgba(255, 255, 255, 0.9);
+  outline: 2px dashed var(--brand-accent);
+  outline-offset: 3px;
+}
+.node.connect-target { outline: 3px solid #16a34a; outline-offset: 3px; }
+.node-icon { width: 62%; flex: 1 1 auto; min-height: 0; margin: 0 auto; }
 .node-icon svg { width: 100%; height: 100%; }
-.node-label { min-width: 0; overflow: hidden; }
-.node-name { font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.node-model { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-label { min-width: 0; width: 100%; flex-shrink: 0; }
+.node-name { font-size: 11.5px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.node-model { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-category-tick { width: 20px; height: 3px; border-radius: 2px; margin: 0 auto 2px; }
 
-/* draw.io-style connection dots: hidden until hover/selection */
+/* draw.io-style hover arrows: sit OUTSIDE the shape's edge, not on the
+   border, and read as directional affordances (arrow glyph in a pill),
+   not just a generic handle. */
 .connect-dot {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid var(--brand-accent);
+  border: 1.5px solid var(--brand-accent);
+  color: var(--brand-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
   opacity: 0;
-  transition: opacity 0.1s ease;
+  transform: scale(0.85);
+  transition: opacity 0.12s ease, transform 0.12s ease, background 0.12s ease, color 0.12s ease;
   cursor: crosshair;
-  z-index: 2;
+  z-index: 3;
 }
+.connect-dot:hover { background: var(--brand-accent); color: #fff; }
 .node:hover .connect-dot,
 .node.selected .connect-dot,
 .shape:hover .connect-dot,
 .shape.selected .connect-dot {
   opacity: 1;
+  transform: scale(1);
 }
-.connect-dot-n { top: -6px; left: 50%; margin-left: -5px; }
-.connect-dot-s { bottom: -6px; left: 50%; margin-left: -5px; }
-.connect-dot-e { right: -6px; top: 50%; margin-top: -5px; }
-.connect-dot-w { left: -6px; top: 50%; margin-top: -5px; }
+.connect-dot-n { top: -28px; left: 50%; margin-left: -10px; }
+.connect-dot-s { bottom: -28px; left: 50%; margin-left: -10px; }
+.connect-dot-e { right: -28px; top: 50%; margin-top: -10px; }
+.connect-dot-w { left: -28px; top: 50%; margin-top: -10px; }
 
 /* draw.io-style resize handle: only on selection */
 .resize-handle {
@@ -396,6 +490,14 @@ body {
   align-items: flex-start;
   text-align: left;
 }
+.shape-stockpile {
+  flex-direction: column;
+  justify-content: flex-end;
+  background: transparent;
+}
+.shape-stockpile-icon { width: 60%; flex: 1; min-height: 0; }
+.shape-stockpile-icon svg { width: 100%; height: 100%; }
+.shape-text-under { font-weight: 600; text-align: center; }
 
 .shape-text {
   font-size: 12.5px;

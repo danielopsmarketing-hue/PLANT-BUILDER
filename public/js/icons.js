@@ -18,8 +18,13 @@ export function colorForCategory(category) {
   return CATEGORY_COLORS[category] || "#6b7280";
 }
 
+const NEUTRAL_ICON_COLOR = "#334155"; // slate-700 -- AggFlow's equipment icons are black/white, not colored per category
+
 export function iconSvg(iconType, category) {
-  const color = colorForCategory(category);
+  // Monochrome by default, AggFlow-style: the icon shows equipment TYPE,
+  // category color is a separate accent (see colorForCategory), not baked
+  // into the icon itself.
+  const color = NEUTRAL_ICON_COLOR;
   switch (iconType) {
     case "hopper":
       // Grizzly feeder: wide hopper mouth, grizzly bars, chute, support legs.
