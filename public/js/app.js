@@ -2,12 +2,12 @@ import { iconSvg, colorForCategory } from "./icons.js";
 import { listLayouts, saveLayout, loadLayout, deleteLayout } from "./storage.js";
 import { fetchCategories, fetchEquipment } from "./api.js";
 
-const DEFAULT_NODE_WIDTH = 140;
-const DEFAULT_NODE_HEIGHT = 92;
+const DEFAULT_NODE_WIDTH = 196;
+const DEFAULT_NODE_HEIGHT = 130;
 const MIN_NODE_WIDTH = 96;
 const MIN_NODE_HEIGHT = 64;
-const MAX_NODE_WIDTH = 360;
-const MAX_NODE_HEIGHT = 260;
+const MAX_NODE_WIDTH = 400;
+const MAX_NODE_HEIGHT = 280;
 const MAX_HISTORY = 60;
 
 const MIN_SHAPE_SIZE = 40;
