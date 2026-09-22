@@ -33,6 +33,8 @@ export function saveLayout(name, state) {
     savedAt: Date.now(),
     nodes: state.nodes,
     connectors: state.connectors,
+    shapes: state.shapes || [],
+    lines: state.lines || [],
   };
   const existingIndex = layouts.findIndex((l) => l.id === id);
   if (existingIndex >= 0) {

@@ -222,6 +222,31 @@ body {
 
 .thumb-img { width: 100%; height: 100%; object-fit: contain; border-radius: 3px; }
 
+/* ---------- Tools panel ---------- */
+
+.equipment-heading { margin-top: 18px; }
+
+.tools-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fafbfc;
+  cursor: grab;
+  color: var(--text-muted);
+}
+.tool-item:hover { border-color: var(--brand-accent); background: #fff; color: var(--brand-accent); }
+.tool-item svg { width: 22px; height: 22px; }
+.tool-item span { font-size: 11px; font-weight: 600; color: var(--text); }
+
 /* ---------- Canvas ---------- */
 
 .canvas-viewport {
@@ -335,6 +360,60 @@ body {
   z-index: 2;
 }
 .node.selected .resize-handle { opacity: 1; }
+
+/* ---------- Shapes & free lines (Tools panel output) ---------- */
+
+.shape {
+  position: absolute;
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+.shape:active { cursor: grabbing; }
+.shape.selected { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
+.shape.selected .resize-handle { opacity: 1; }
+
+.shape-rect {
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid #374151;
+  border-radius: 4px;
+}
+.shape-ellipse {
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid #374151;
+  border-radius: 50%;
+}
+.shape-note {
+  background: #fef9c3;
+  border: 1px solid #eab308;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  align-items: flex-start;
+  text-align: left;
+}
+
+.shape-text {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+  overflow: hidden;
+}
+
+.free-line { stroke: #374151; }
+.free-line.selected { stroke: var(--brand-accent); stroke-width: 3.5; }
+
+.line-handle {
+  fill: #fff;
+  stroke: var(--brand-accent);
+  stroke-width: 2;
+  cursor: move;
+  pointer-events: all;
+}
 
 /* ---------- Inspector ---------- */
 

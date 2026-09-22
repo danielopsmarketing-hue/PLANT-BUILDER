@@ -54,6 +54,13 @@ either way — reps don't need a login to build layouts.
 
 **Builder (`index.html`)**
 
+- Tools panel: drag a Rectangle, Ellipse, Note, or Line onto the canvas as
+  a freeform annotation, independent of equipment (drawio-style basic
+  shapes). Each is draggable, resizable (rect/ellipse/note via corner
+  handle), and editable — rect/ellipse/note get a text label through the
+  Inspector, lines get two draggable endpoint handles when selected.
+  Delete like anything else on the canvas; all of it participates in
+  undo/redo and gets included in the PNG export.
 - Equipment catalog panel, grouped by category, searchable, collapsible
   groups, drag-and-drop onto canvas
 - Canvas nodes: place, move, resize (drag the corner handle, like drawio),
@@ -85,6 +92,20 @@ either way — reps don't need a login to build layouts.
 Changes made here are what reps see the next time they load or refresh the
 builder's catalog panel — this is the "one source of truth... maintained by
 sales ops" piece from the original brief.
+
+### Product images
+
+The catalog is seeded with 77 real products (Terex Finlay, Terex EvoQuip,
+Telestack, Terex Ecotec, CBI, Terex Washing Systems) from the supplied
+spreadsheet, but none of them have photos yet. Web search for candidate
+photos ran fine from this environment, but actually downloading any image
+did not — this sandbox's network egress policy blocks outbound requests to
+general web domains (confirmed: 403 on every manufacturer/dealer host
+tried, not a fluke or a bad URL). A markdown reference of the candidate
+source URLs found per product was generated and sent separately; use it
+to grab photos manually and upload them via the admin page, or re-run the
+same search-and-download approach from an environment with normal web
+access (e.g. Claude Code on your own machine).
 
 ### Project layout
 
@@ -164,8 +185,10 @@ wipe local disk on every redeploy, which would silently erase the catalog.
 ## Open decisions (need your input before or during the next phase)
 
 - Real logo file — see note above.
-- Real equipment lineup, specs, and product images/brochures — the admin
-  UI is ready for these; someone needs to actually enter them.
+- Real equipment lineup is now in (77 products from the spreadsheet), but
+  specs, product photos, and brochure links are still empty — the admin UI
+  is ready for these, someone needs to fill them in (see "Product images"
+  above for photos specifically).
 - Whether reps can see each other's customer layouts, or only their own —
   this determines the data model for saved-layout persistence and hasn't
   been decided.

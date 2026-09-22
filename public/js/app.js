@@ -10,6 +10,15 @@ const MAX_NODE_WIDTH = 360;
 const MAX_NODE_HEIGHT = 260;
 const MAX_HISTORY = 60;
 
+const MIN_SHAPE_SIZE = 40;
+const MAX_SHAPE_SIZE = 600;
+const SHAPE_DEFAULTS = {
+  rect: { width: 140, height: 90 },
+  ellipse: { width: 140, height: 90 },
+  note: { width: 160, height: 90 },
+};
+const LINE_DEFAULT_LENGTH = 140;
+
 class PlantBuilderApp {
   constructor() {
     this.categories = [];
@@ -18,7 +27,9 @@ class PlantBuilderApp {
 
     this.nodes = new Map();
     this.connectors = new Map();
-    this.selection = null; // { type: 'node' | 'connector', id }
+    this.shapes = new Map(); // freeform rect/ellipse/note annotations, not tied to equipment
+    this.lines = new Map(); // freeform lines/arrows, not tied to equipment nodes
+    this.selection = null; // { type: 'node' | 'connector' | 'shape' | 'line', id }
     this.view = { scale: 1, panX: 40, panY: 40 };
     this.currentLayoutId = null;
     this.nextId = 1;
@@ -47,6 +58,7 @@ class PlantBuilderApp {
     this.bindCanvasEvents();
     this.bindKeyboard();
     this.bindCatalogSearch();
+    this.bindToolsPanel();
     this.refreshLayoutList();
     this.applyViewTransform();
     this.render();
@@ -152,6 +164,17 @@ class PlantBuilderApp {
     return iconSvg(item.icon, item.category);
   }
 
+  // ---------- Tools panel (drawio-style shapes/lines/notes) ----------
+
+  bindToolsPanel() {
+    for (const el of document.querySelectorAll(".tool-item")) {
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/tool-kind", el.dataset.toolKind);
+        e.dataTransfer.effectAllowed = "copy";
+      });
+    }
+  }
+
   // ---------- Toolbar ----------
 
   bindToolbar() {
@@ -179,9 +202,16 @@ class PlantBuilderApp {
     viewport.addEventListener("drop", (e) => {
       e.preventDefault();
       const equipmentId = e.dataTransfer.getData("text/equipment-id");
-      if (!equipmentId) return;
+      if (equipmentId) {
+        const { x, y } = this.clientToWorld(e.clientX, e.clientY);
+        this.addNode(equipmentId, x - DEFAULT_NODE_WIDTH / 2, y - DEFAULT_NODE_HEIGHT / 2);
+        return;
+      }
+      const toolKind = e.dataTransfer.getData("text/tool-kind");
+      if (!toolKind) return;
       const { x, y } = this.clientToWorld(e.clientX, e.clientY);
-      this.addNode(equipmentId, x - DEFAULT_NODE_WIDTH / 2, y - DEFAULT_NODE_HEIGHT / 2);
+      if (toolKind === "line") this.addLine(x, y);
+      else this.addShape(toolKind, x, y);
     });
 
     viewport.addEventListener("wheel", (e) => {
@@ -305,8 +335,11 @@ class PlantBuilderApp {
 
   deleteSelection() {
     if (!this.selection) return;
-    if (this.selection.type === "node") this.deleteNode(this.selection.id);
-    else this.deleteConnector(this.selection.id);
+    const { type, id } = this.selection;
+    if (type === "node") this.deleteNode(id);
+    else if (type === "shape") this.deleteShape(id);
+    else if (type === "line") this.deleteLine(id);
+    else this.deleteConnector(id);
     this.selection = null;
     this.render();
     this.pushHistory();
@@ -353,6 +386,41 @@ class PlantBuilderApp {
       textarea.addEventListener("input", (e) => { node.notes = e.target.value; });
       textarea.addEventListener("blur", () => this.pushHistory());
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
+    } else if (this.selection.type === "shape") {
+      const shape = this.shapes.get(this.selection.id);
+      if (!shape) return;
+      const kindLabel = { rect: "Rectangle", ellipse: "Ellipse", note: "Note" }[shape.kind] || "Shape";
+      content.className = "";
+      content.innerHTML = `
+        <div class="inspector-header">
+          <div>
+            <div class="inspector-name">${kindLabel}</div>
+          </div>
+        </div>
+        <label class="inspector-notes-label" for="inspector-notes">Text</label>
+        <textarea id="inspector-notes" rows="4" placeholder="Label for this ${kindLabel.toLowerCase()}…">${escapeHtml(shape.text || "")}</textarea>
+        <button id="inspector-delete" class="danger">Delete from canvas</button>
+      `;
+      const textarea = document.getElementById("inspector-notes");
+      textarea.addEventListener("input", (e) => {
+        shape.text = e.target.value;
+        const el = this.els.world.querySelector(`.shape[data-id="${shape.id}"] .shape-text`);
+        if (el) el.textContent = shape.text;
+      });
+      textarea.addEventListener("blur", () => this.pushHistory());
+      document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
+    } else if (this.selection.type === "line") {
+      content.className = "";
+      content.innerHTML = `
+        <div class="inspector-header">
+          <div>
+            <div class="inspector-name">Line</div>
+            <div class="inspector-model">Freeform annotation, not tied to equipment</div>
+          </div>
+        </div>
+        <button id="inspector-delete" class="danger">Delete line</button>
+      `;
+      document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     } else {
       const conn = this.connectors.get(this.selection.id);
       if (!conn) return;
@@ -376,8 +444,14 @@ class PlantBuilderApp {
     for (const el of this.els.world.querySelectorAll(".node")) {
       el.classList.toggle("selected", this.selection?.type === "node" && this.selection.id === el.dataset.id);
     }
-    for (const el of this.els.svg.querySelectorAll(".connector-line")) {
+    for (const el of this.els.world.querySelectorAll(".shape")) {
+      el.classList.toggle("selected", this.selection?.type === "shape" && this.selection.id === el.dataset.id);
+    }
+    for (const el of this.els.svg.querySelectorAll(".connector-line:not(.free-line)")) {
       el.classList.toggle("selected", this.selection?.type === "connector" && this.selection.id === el.dataset.id);
+    }
+    for (const el of this.els.svg.querySelectorAll(".free-line")) {
+      el.classList.toggle("selected", this.selection?.type === "line" && this.selection.id === el.dataset.id);
     }
   }
 
@@ -385,9 +459,11 @@ class PlantBuilderApp {
 
   render() {
     this.renderNodes();
+    this.renderShapes();
     this.renderConnectors();
     this.renderInspector();
-    this.els.emptyHint.style.display = this.nodes.size === 0 ? "block" : "none";
+    this.els.emptyHint.style.display =
+      this.nodes.size === 0 && this.shapes.size === 0 && this.lines.size === 0 ? "block" : "none";
   }
 
   renderNodes() {
@@ -599,6 +675,7 @@ class PlantBuilderApp {
       });
       svg.appendChild(line);
     }
+    this.renderFreeLines();
     this.renderSelectionHighlight();
   }
 
@@ -617,6 +694,189 @@ class PlantBuilderApp {
     return { x: cx + Math.cos(angle) * scale, y: cy + Math.sin(angle) * scale };
   }
 
+  // ---------- Shapes & free lines (drawio-style annotation tools) ----------
+  //
+  // Independent of equipment: rectangles/ellipses/notes are generic boxes a
+  // rep can label freely, and lines are plain two-point arrows not anchored
+  // to any node. Both participate in selection/undo/export like everything
+  // else on the canvas.
+
+  addShape(kind, x, y) {
+    const size = SHAPE_DEFAULTS[kind] || SHAPE_DEFAULTS.rect;
+    const id = `shape-${this.nextId++}`;
+    this.shapes.set(id, {
+      id,
+      kind,
+      x: x - size.width / 2,
+      y: y - size.height / 2,
+      width: size.width,
+      height: size.height,
+      text: kind === "note" ? "Note" : "",
+    });
+    this.setSelection({ type: "shape", id });
+    this.render();
+    this.pushHistory();
+    return id;
+  }
+
+  deleteShape(id) {
+    this.shapes.delete(id);
+  }
+
+  addLine(x, y) {
+    const id = `line-${this.nextId++}`;
+    this.lines.set(id, {
+      id,
+      x1: x - LINE_DEFAULT_LENGTH / 2,
+      y1: y,
+      x2: x + LINE_DEFAULT_LENGTH / 2,
+      y2: y,
+    });
+    this.setSelection({ type: "line", id });
+    this.render();
+    this.pushHistory();
+    return id;
+  }
+
+  deleteLine(id) {
+    this.lines.delete(id);
+  }
+
+  renderShapes() {
+    for (const el of Array.from(this.els.world.querySelectorAll(".shape"))) el.remove();
+
+    for (const shape of this.shapes.values()) {
+      const el = document.createElement("div");
+      el.className = `shape shape-${shape.kind}`;
+      el.dataset.id = shape.id;
+      el.style.left = `${shape.x}px`;
+      el.style.top = `${shape.y}px`;
+      el.style.width = `${shape.width}px`;
+      el.style.height = `${shape.height}px`;
+      el.innerHTML = `
+        <div class="shape-text">${escapeHtml(shape.text || "")}</div>
+        <div class="resize-handle"></div>
+      `;
+      el.addEventListener("mousedown", (e) => this.onShapeMouseDown(e, shape));
+      el.querySelector(".resize-handle").addEventListener("mousedown", (e) => this.onShapeResizeMouseDown(e, shape));
+      this.els.world.appendChild(el);
+    }
+    this.renderSelectionHighlight();
+  }
+
+  onShapeMouseDown(e, shape) {
+    e.stopPropagation();
+    this.setSelection({ type: "shape", id: shape.id });
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startShapeX = shape.x;
+    const startShapeY = shape.y;
+    let moved = false;
+
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / this.view.scale;
+      const dy = (ev.clientY - startY) / this.view.scale;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+      shape.x = startShapeX + dx;
+      shape.y = startShapeY + dy;
+      const el = this.els.world.querySelector(`.shape[data-id="${shape.id}"]`);
+      if (el) {
+        el.style.left = `${shape.x}px`;
+        el.style.top = `${shape.y}px`;
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  onShapeResizeMouseDown(e, shape) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { width: shape.width, height: shape.height };
+    const el = this.els.world.querySelector(`.shape[data-id="${shape.id}"]`);
+
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / this.view.scale;
+      const dy = (ev.clientY - startY) / this.view.scale;
+      shape.width = clamp(start.width + dx, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
+      shape.height = clamp(start.height + dy, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
+      if (el) {
+        el.style.width = `${shape.width}px`;
+        el.style.height = `${shape.height}px`;
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  renderFreeLines() {
+    const svg = this.els.svg;
+    for (const line of this.lines.values()) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      el.setAttribute("x1", line.x1);
+      el.setAttribute("y1", line.y1);
+      el.setAttribute("x2", line.x2);
+      el.setAttribute("y2", line.y2);
+      el.setAttribute("class", "connector-line free-line");
+      el.setAttribute("marker-end", "url(#arrowhead)");
+      el.dataset.id = line.id;
+      el.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        this.setSelection({ type: "line", id: line.id });
+      });
+      svg.appendChild(el);
+
+      if (this.selection?.type === "line" && this.selection.id === line.id) {
+        svg.appendChild(this.buildLineHandle(line, "1"));
+        svg.appendChild(this.buildLineHandle(line, "2"));
+      }
+    }
+  }
+
+  buildLineHandle(line, endKey) {
+    const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    handle.setAttribute("cx", line[`x${endKey}`]);
+    handle.setAttribute("cy", line[`y${endKey}`]);
+    handle.setAttribute("r", 5);
+    handle.setAttribute("class", "line-handle");
+    handle.addEventListener("mousedown", (e) => this.onLineHandleMouseDown(e, line, endKey));
+    return handle;
+  }
+
+  onLineHandleMouseDown(e, line, endKey) {
+    e.stopPropagation();
+    e.preventDefault();
+    this.setSelection({ type: "line", id: line.id });
+
+    const onMove = (ev) => {
+      const { x, y } = this.clientToWorld(ev.clientX, ev.clientY);
+      line[`x${endKey}`] = x;
+      line[`y${endKey}`] = y;
+      this.renderConnectors();
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   // ---------- Undo / redo ----------
   //
   // this.history[this.historyIndex] is always the current state. pushHistory()
@@ -627,6 +887,8 @@ class PlantBuilderApp {
     return {
       nodes: Array.from(this.nodes.values()).map((n) => ({ ...n })),
       connectors: Array.from(this.connectors.values()).map((c) => ({ ...c })),
+      shapes: Array.from(this.shapes.values()).map((s) => ({ ...s })),
+      lines: Array.from(this.lines.values()).map((l) => ({ ...l })),
     };
   }
 
@@ -650,6 +912,8 @@ class PlantBuilderApp {
   restoreSnapshot(snap) {
     this.nodes = new Map(snap.nodes.map((n) => [n.id, { ...n }]));
     this.connectors = new Map(snap.connectors.map((c) => [c.id, { ...c }]));
+    this.shapes = new Map((snap.shapes || []).map((s) => [s.id, { ...s }]));
+    this.lines = new Map((snap.lines || []).map((l) => [l.id, { ...l }]));
     this.selection = null;
     this.render();
     this.updateHistoryButtons();
@@ -675,9 +939,12 @@ class PlantBuilderApp {
   // ---------- Save / Load ----------
 
   newLayout() {
-    if (this.nodes.size > 0 && !confirm("Clear the current layout? Unsaved changes will be lost.")) return;
+    const hasContent = this.nodes.size > 0 || this.shapes.size > 0 || this.lines.size > 0;
+    if (hasContent && !confirm("Clear the current layout? Unsaved changes will be lost.")) return;
     this.nodes.clear();
     this.connectors.clear();
+    this.shapes.clear();
+    this.lines.clear();
     this.currentLayoutId = null;
     this.setSelection(null);
     this.resetView();
@@ -692,6 +959,8 @@ class PlantBuilderApp {
         id: this.currentLayoutId,
         nodes: Array.from(this.nodes.values()),
         connectors: Array.from(this.connectors.values()),
+        shapes: Array.from(this.shapes.values()),
+        lines: Array.from(this.lines.values()),
       });
       this.refreshLayoutList();
     });
@@ -705,6 +974,8 @@ class PlantBuilderApp {
 
     this.nodes.clear();
     this.connectors.clear();
+    this.shapes.clear();
+    this.lines.clear();
     for (const n of layout.nodes) {
       this.nodes.set(n.id, {
         width: DEFAULT_NODE_WIDTH,
@@ -713,6 +984,8 @@ class PlantBuilderApp {
       });
     }
     for (const c of layout.connectors) this.connectors.set(c.id, c);
+    for (const s of layout.shapes || []) this.shapes.set(s.id, s);
+    for (const l of layout.lines || []) this.lines.set(l.id, l);
     this.currentLayoutId = layout.id;
     this.setSelection(null);
     this.render();
@@ -765,8 +1038,8 @@ class PlantBuilderApp {
   // ---------- Export ----------
 
   async exportPng() {
-    if (this.nodes.size === 0) {
-      alert("Add some equipment to the canvas before exporting.");
+    if (this.nodes.size === 0 && this.shapes.size === 0 && this.lines.size === 0) {
+      alert("Add some equipment or drawing elements to the canvas before exporting.");
       return;
     }
 
@@ -787,11 +1060,23 @@ class PlantBuilderApp {
 
   computeNodeBounds() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const grow = (x, y) => {
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    };
     for (const node of this.nodes.values()) {
-      minX = Math.min(minX, node.x);
-      minY = Math.min(minY, node.y);
-      maxX = Math.max(maxX, node.x + node.width);
-      maxY = Math.max(maxY, node.y + node.height);
+      grow(node.x, node.y);
+      grow(node.x + node.width, node.y + node.height);
+    }
+    for (const shape of this.shapes.values()) {
+      grow(shape.x, shape.y);
+      grow(shape.x + shape.width, shape.y + shape.height);
+    }
+    for (const line of this.lines.values()) {
+      grow(line.x1, line.y1);
+      grow(line.x2, line.y2);
     }
     const pad = 40;
     return { minX: minX - pad, minY: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
@@ -824,7 +1109,7 @@ class PlantBuilderApp {
     inner.style.transform = `translate(${-bounds.minX}px, ${-bounds.minY}px)`;
     const worldClone = this.els.world.cloneNode(true);
     worldClone.style.transform = "none";
-    for (const dot of worldClone.querySelectorAll(".connect-dot, .resize-handle")) dot.remove();
+    for (const dot of worldClone.querySelectorAll(".connect-dot, .resize-handle, .line-handle")) dot.remove();
     inner.appendChild(worldClone);
     canvasClone.appendChild(inner);
 
