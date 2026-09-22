@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plant Builder — Ironpeak Equipment</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">IE</div>
+      <div class="brand-text">
+        <div class="brand-name">Ironpeak Equipment</div>
+        <div class="brand-tagline">Plant Builder</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button id="btn-new" title="Clear the canvas and start a new layout">New</button>
+      <button id="btn-save" title="Save this layout">Save</button>
+      <select id="load-select" title="Saved layouts"></select>
+      <button id="btn-load" title="Load selected layout">Load</button>
+      <button id="btn-delete-layout" title="Delete selected saved layout" class="danger">Delete</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-connect" title="Click two pieces of equipment to connect them">Connect</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-zoom-out" title="Zoom out">&minus;</button>
+      <span id="zoom-level">100%</span>
+      <button id="btn-zoom-in" title="Zoom in">+</button>
+      <button id="btn-zoom-reset" title="Reset view">Reset</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-export" class="primary" title="Export a branded PNG">Export PNG</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="catalog-panel">
+      <h2>Equipment</h2>
+      <div id="catalog-list"></div>
+      <p class="catalog-hint">Drag an item onto the canvas.</p>
+    </aside>
+
+    <section class="canvas-viewport" id="canvas-viewport">
+      <div class="canvas-world" id="canvas-world">
+        <svg id="connector-layer" class="connector-layer"></svg>
+      </div>
+      <div class="canvas-empty-hint" id="canvas-empty-hint">
+        Drag equipment from the left panel to start building a flow.
+      </div>
+    </section>
+
+    <aside class="inspector-panel" id="inspector-panel">
+      <h2>Inspector</h2>
+      <div id="inspector-content" class="inspector-empty">
+        Select a piece of equipment or a connector to see details here.
+      </div>
+    </aside>
+  </main>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3 id="modal-title">Save Layout</h3>
+      <input type="text" id="modal-input" placeholder="Layout name" />
+      <div class="modal-actions">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-confirm" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
