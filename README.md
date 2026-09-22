@@ -65,9 +65,14 @@ either way — reps don't need a login to build layouts.
   groups, drag-and-drop onto canvas
 - Canvas nodes: place, move, resize (drag the corner handle, like drawio),
   select, delete
-- Directional connectors, drawio-style: hover a node to reveal four
-  connection dots, drag from one to another node to draw an arrow; click a
-  connector to select it, then delete
+- Directional connectors, drawio-style magnets: hover a node *or* a Tools
+  shape to reveal four connection dots, drag from one to another (any mix
+  of equipment/shapes) to draw an arrow; click a connector to select it,
+  then delete. Freeform lines magnet-snap to a node/shape edge too when you
+  drag an endpoint near one, or fall back to the grid otherwise.
+- Snap-to-grid: dropping, moving, or resizing a node or shape snaps to the
+  24px grid (matching the visible background grid). Hold Alt while
+  dragging to place freely without snapping.
 - Undo/redo (toolbar buttons or Ctrl+Z / Ctrl+Shift+Z), covering adds,
   deletes, moves, resizes, and connections
 - Inspector panel: selected item's spec sheet, position, a **View
@@ -97,15 +102,25 @@ sales ops" piece from the original brief.
 
 The catalog is seeded with 77 real products (Terex Finlay, Terex EvoQuip,
 Telestack, Terex Ecotec, CBI, Terex Washing Systems) from the supplied
-spreadsheet, but none of them have photos yet. Web search for candidate
-photos ran fine from this environment, but actually downloading any image
-did not — this sandbox's network egress policy blocks outbound requests to
-general web domains (confirmed: 403 on every manufacturer/dealer host
-tried, not a fluke or a bad URL). A markdown reference of the candidate
-source URLs found per product was generated and sent separately; use it
-to grab photos manually and upload them via the admin page, or re-run the
-same search-and-download approach from an environment with normal web
-access (e.g. Claude Code on your own machine).
+spreadsheet, but none of them have real photos yet. Web search for
+candidate photos ran fine from this environment, but actually downloading
+any image did not — this sandbox's network egress policy blocks outbound
+requests to general web domains (confirmed: 403 on every manufacturer/
+dealer host tried, not a fluke or a bad URL). A markdown reference of the
+candidate source URLs found per product was generated and sent
+separately; use it to grab photos manually and upload them via the admin
+page, or re-run the same search-and-download approach from an environment
+with normal web access (e.g. Claude Code on your own machine).
+
+Until real photos are in, the placeholder icons (`js/icons.js`) carry more
+of the visual load than before: crushers now render distinct jaw/cone/
+impact silhouettes instead of one generic shape (seeded automatically by
+matching each product's name), and hopper/screen/conveyor/stacker got
+simple support-leg details for a more equipment-like, AggFlow-style read
+at a glance. These are still line-art placeholders, not photos — they
+render both in the catalog panel and on canvas nodes (same `thumbHtml()`
+path), and get replaced automatically the moment a real image is uploaded
+for that item.
 
 ### Project layout
 

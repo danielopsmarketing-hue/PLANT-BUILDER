@@ -18,6 +18,8 @@ const SHAPE_DEFAULTS = {
   note: { width: 160, height: 90 },
 };
 const LINE_DEFAULT_LENGTH = 140;
+const GRID_SIZE = 24; // matches the visual canvas background grid
+const MAGNET_RADIUS = 14; // how close a line endpoint must be to a box edge to snap
 
 class PlantBuilderApp {
   constructor() {
@@ -159,7 +161,10 @@ class PlantBuilderApp {
 
   thumbHtml(item) {
     if (item.imagePath) {
-      return `<img src="${item.imagePath}" alt="${escapeHtml(item.name)}" class="thumb-img" />`;
+      // draggable="false": browsers make <img> natively draggable, which would
+      // otherwise hijack the drag gesture out from under the catalog card's
+      // own drag-and-drop handling.
+      return `<img src="${item.imagePath}" alt="${escapeHtml(item.name)}" class="thumb-img" draggable="false" />`;
     }
     return iconSvg(item.icon, item.category);
   }
@@ -302,8 +307,8 @@ class PlantBuilderApp {
     this.nodes.set(id, {
       id,
       equipmentId,
-      x,
-      y,
+      x: snapToGrid(x),
+      y: snapToGrid(y),
       width: DEFAULT_NODE_WIDTH,
       height: DEFAULT_NODE_HEIGHT,
       notes: "",
@@ -314,11 +319,30 @@ class PlantBuilderApp {
     return id;
   }
 
-  deleteNode(id) {
-    this.nodes.delete(id);
+  // A "box" is anything a connector can attach to: an equipment node or a
+  // Tools-panel shape. Both have {id, x, y, width, height}, so connectors,
+  // magnets, and grid-snap all work the same way regardless of which.
+  getBox(id) {
+    return this.nodes.get(id) || this.shapes.get(id) || null;
+  }
+
+  boxLabel(id) {
+    const node = this.nodes.get(id);
+    if (node) return this.getEquipmentById(node.equipmentId)?.name || "?";
+    const shape = this.shapes.get(id);
+    if (shape) return { rect: "Rectangle", ellipse: "Ellipse", note: "Note" }[shape.kind] || "Shape";
+    return "?";
+  }
+
+  removeConnectorsFor(id) {
     for (const [cid, c] of this.connectors) {
       if (c.from === id || c.to === id) this.connectors.delete(cid);
     }
+  }
+
+  deleteNode(id) {
+    this.nodes.delete(id);
+    this.removeConnectorsFor(id);
   }
 
   deleteConnector(id) {
@@ -330,7 +354,11 @@ class PlantBuilderApp {
   setSelection(selection) {
     this.selection = selection;
     this.renderInspector();
-    this.renderSelectionHighlight();
+    // A line's endpoint handles are only created inside renderConnectors's
+    // SVG rebuild (renderFreeLines), not just toggled like the .selected
+    // class elsewhere -- so selecting/deselecting a line needs a real
+    // re-render, not just renderSelectionHighlight's class toggling.
+    this.renderConnectors();
   }
 
   deleteSelection() {
@@ -424,14 +452,12 @@ class PlantBuilderApp {
     } else {
       const conn = this.connectors.get(this.selection.id);
       if (!conn) return;
-      const fromSpec = this.getEquipmentById(this.nodes.get(conn.from)?.equipmentId);
-      const toSpec = this.getEquipmentById(this.nodes.get(conn.to)?.equipmentId);
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
           <div>
             <div class="inspector-name">Connector</div>
-            <div class="inspector-model">${escapeHtml(fromSpec?.name || "?")} &rarr; ${escapeHtml(toSpec?.name || "?")}</div>
+            <div class="inspector-model">${escapeHtml(this.boxLabel(conn.from))} &rarr; ${escapeHtml(this.boxLabel(conn.to))}</div>
           </div>
         </div>
         <button id="inspector-delete" class="danger">Delete connector</button>
@@ -517,8 +543,10 @@ class PlantBuilderApp {
       const dx = (ev.clientX - startX) / this.view.scale;
       const dy = (ev.clientY - startY) / this.view.scale;
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-      node.x = startNodeX + dx;
-      node.y = startNodeY + dy;
+      const rawX = startNodeX + dx;
+      const rawY = startNodeY + dy;
+      node.x = ev.altKey ? rawX : snapToGrid(rawX);
+      node.y = ev.altKey ? rawY : snapToGrid(rawY);
       const el = this.els.world.querySelector(`.node[data-id="${node.id}"]`);
       if (el) {
         el.style.left = `${node.x}px`;
@@ -550,8 +578,10 @@ class PlantBuilderApp {
     const onMove = (ev) => {
       const dx = (ev.clientX - startX) / this.view.scale;
       const dy = (ev.clientY - startY) / this.view.scale;
-      node.width = clamp(start.width + dx, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
-      node.height = clamp(start.height + dy, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+      const rawW = clamp(start.width + dx, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+      const rawH = clamp(start.height + dy, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+      node.width = ev.altKey ? rawW : snapToGrid(rawW);
+      node.height = ev.altKey ? rawH : snapToGrid(rawH);
       if (el) {
         el.style.width = `${node.width}px`;
         el.style.height = `${node.height}px`;
@@ -613,16 +643,19 @@ class PlantBuilderApp {
     for (const el of this.els.svg.querySelectorAll(".connector-line-temp")) el.remove();
   }
 
-  setNodeHoverState(node, isTarget) {
-    const el = this.els.world.querySelector(`.node[data-id="${node.id}"]`);
+  setNodeHoverState(box, isTarget) {
+    const el = this.els.world.querySelector(`.node[data-id="${box.id}"], .shape[data-id="${box.id}"]`);
     if (el) el.classList.toggle("connect-target", isTarget);
   }
 
-  nodeAtPoint(worldX, worldY, excludeId) {
-    for (const node of this.nodes.values()) {
-      if (node.id === excludeId) continue;
-      if (worldX >= node.x && worldX <= node.x + node.width && worldY >= node.y && worldY <= node.y + node.height) {
-        return node;
+  nodeAtPoint(worldX, worldY, excludeId, margin = 0) {
+    for (const box of [...this.nodes.values(), ...this.shapes.values()]) {
+      if (box.id === excludeId) continue;
+      if (
+        worldX >= box.x - margin && worldX <= box.x + box.width + margin &&
+        worldY >= box.y - margin && worldY <= box.y + box.height + margin
+      ) {
+        return box;
       }
     }
     return null;
@@ -654,8 +687,8 @@ class PlantBuilderApp {
       </defs>`;
 
     for (const conn of this.connectors.values()) {
-      const from = this.nodes.get(conn.from);
-      const to = this.nodes.get(conn.to);
+      const from = this.getBox(conn.from);
+      const to = this.getBox(conn.to);
       if (!from || !to) continue;
 
       const p1 = this.nodeAnchor(from, to);
@@ -707,8 +740,8 @@ class PlantBuilderApp {
     this.shapes.set(id, {
       id,
       kind,
-      x: x - size.width / 2,
-      y: y - size.height / 2,
+      x: snapToGrid(x - size.width / 2),
+      y: snapToGrid(y - size.height / 2),
       width: size.width,
       height: size.height,
       text: kind === "note" ? "Note" : "",
@@ -721,16 +754,17 @@ class PlantBuilderApp {
 
   deleteShape(id) {
     this.shapes.delete(id);
+    this.removeConnectorsFor(id);
   }
 
   addLine(x, y) {
     const id = `line-${this.nextId++}`;
     this.lines.set(id, {
       id,
-      x1: x - LINE_DEFAULT_LENGTH / 2,
-      y1: y,
-      x2: x + LINE_DEFAULT_LENGTH / 2,
-      y2: y,
+      x1: snapToGrid(x - LINE_DEFAULT_LENGTH / 2),
+      y1: snapToGrid(y),
+      x2: snapToGrid(x + LINE_DEFAULT_LENGTH / 2),
+      y2: snapToGrid(y),
     });
     this.setSelection({ type: "line", id });
     this.render();
@@ -755,9 +789,16 @@ class PlantBuilderApp {
       el.style.height = `${shape.height}px`;
       el.innerHTML = `
         <div class="shape-text">${escapeHtml(shape.text || "")}</div>
+        <div class="connect-dot connect-dot-n" data-side="n"></div>
+        <div class="connect-dot connect-dot-e" data-side="e"></div>
+        <div class="connect-dot connect-dot-s" data-side="s"></div>
+        <div class="connect-dot connect-dot-w" data-side="w"></div>
         <div class="resize-handle"></div>
       `;
       el.addEventListener("mousedown", (e) => this.onShapeMouseDown(e, shape));
+      for (const dot of el.querySelectorAll(".connect-dot")) {
+        dot.addEventListener("mousedown", (e) => this.onConnectDotMouseDown(e, shape));
+      }
       el.querySelector(".resize-handle").addEventListener("mousedown", (e) => this.onShapeResizeMouseDown(e, shape));
       this.els.world.appendChild(el);
     }
@@ -778,13 +819,16 @@ class PlantBuilderApp {
       const dx = (ev.clientX - startX) / this.view.scale;
       const dy = (ev.clientY - startY) / this.view.scale;
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-      shape.x = startShapeX + dx;
-      shape.y = startShapeY + dy;
+      const rawX = startShapeX + dx;
+      const rawY = startShapeY + dy;
+      shape.x = ev.altKey ? rawX : snapToGrid(rawX);
+      shape.y = ev.altKey ? rawY : snapToGrid(rawY);
       const el = this.els.world.querySelector(`.shape[data-id="${shape.id}"]`);
       if (el) {
         el.style.left = `${shape.x}px`;
         el.style.top = `${shape.y}px`;
       }
+      this.renderConnectors();
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -807,12 +851,15 @@ class PlantBuilderApp {
     const onMove = (ev) => {
       const dx = (ev.clientX - startX) / this.view.scale;
       const dy = (ev.clientY - startY) / this.view.scale;
-      shape.width = clamp(start.width + dx, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
-      shape.height = clamp(start.height + dy, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
+      const rawW = clamp(start.width + dx, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
+      const rawH = clamp(start.height + dy, MIN_SHAPE_SIZE, MAX_SHAPE_SIZE);
+      shape.width = ev.altKey ? rawW : snapToGrid(rawW);
+      shape.height = ev.altKey ? rawH : snapToGrid(rawH);
       if (el) {
         el.style.width = `${shape.width}px`;
         el.style.height = `${shape.height}px`;
       }
+      this.renderConnectors();
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -861,16 +908,34 @@ class PlantBuilderApp {
     e.stopPropagation();
     e.preventDefault();
     this.setSelection({ type: "line", id: line.id });
+    const otherKey = endKey === "1" ? "2" : "1";
+
+    let magnetTarget = null;
 
     const onMove = (ev) => {
       const { x, y } = this.clientToWorld(ev.clientX, ev.clientY);
-      line[`x${endKey}`] = x;
-      line[`y${endKey}`] = y;
+      const hovered = ev.altKey ? null : this.nodeAtPoint(x, y, null, MAGNET_RADIUS);
+      if (hovered !== magnetTarget) {
+        if (magnetTarget) this.setNodeHoverState(magnetTarget, false);
+        magnetTarget = hovered;
+        if (magnetTarget) this.setNodeHoverState(magnetTarget, true);
+      }
+
+      if (magnetTarget) {
+        const other = { x: line[`x${otherKey}`], y: line[`y${otherKey}`], width: 0, height: 0 };
+        const anchor = this.nodeAnchor(magnetTarget, other);
+        line[`x${endKey}`] = anchor.x;
+        line[`y${endKey}`] = anchor.y;
+      } else {
+        line[`x${endKey}`] = ev.altKey ? x : snapToGrid(x);
+        line[`y${endKey}`] = ev.altKey ? y : snapToGrid(y);
+      }
       this.renderConnectors();
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (magnetTarget) this.setNodeHoverState(magnetTarget, false);
       this.pushHistory();
     };
     window.addEventListener("mousemove", onMove);
@@ -1149,6 +1214,10 @@ class PlantBuilderApp {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function snapToGrid(value) {
+  return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 
 function escapeHtml(str) {

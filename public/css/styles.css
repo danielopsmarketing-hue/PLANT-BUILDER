@@ -337,7 +337,9 @@ body {
   z-index: 2;
 }
 .node:hover .connect-dot,
-.node.selected .connect-dot {
+.node.selected .connect-dot,
+.shape:hover .connect-dot,
+.shape.selected .connect-dot {
   opacity: 1;
 }
 .connect-dot-n { top: -6px; left: 50%; margin-left: -5px; }
