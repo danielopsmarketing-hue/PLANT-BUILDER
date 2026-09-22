@@ -113,12 +113,14 @@ page, or re-run the same search-and-download approach from an environment
 with normal web access (e.g. Claude Code on your own machine).
 
 Until real photos are in, the placeholder icons (`js/icons.js`) carry more
-of the visual load than before: crushers now render distinct jaw/cone/
-impact silhouettes instead of one generic shape (seeded automatically by
-matching each product's name), and hopper/screen/conveyor/stacker got
-simple support-leg details for a more equipment-like, AggFlow-style read
-at a glance. These are still line-art placeholders, not photos — they
-render both in the catalog panel and on canvas nodes (same `thumbHtml()`
+of the visual load than before: crushers, screens, and the stacker now
+render as a small mobile-plant illustration — tracked crawler base, the
+crusher/screen body, an angled discharge conveyor with a roller at the
+tip — matching how these machines are actually drawn in flowsheet
+diagrams (crusher body shape differs per type: jaw shows a flywheel,
+cone shows the tapered mantle + feed ring, impact shows the rotor).
+These are still hand-drawn placeholders, not photos — they render both
+in the catalog panel and on canvas nodes (same `thumbHtml()`
 path), and get replaced automatically the moment a real image is uploaded
 for that item.
 
