@@ -1,20 +1,32 @@
-import { CATEGORIES, EQUIPMENT, getEquipmentById } from "./catalog-data.js";
 import { iconSvg, colorForCategory } from "./icons.js";
 import { listLayouts, saveLayout, loadLayout, deleteLayout } from "./storage.js";
+import { fetchCategories, fetchEquipment } from "./api.js";
 
-const NODE_WIDTH = 140;
-const NODE_HEIGHT = 92;
+const DEFAULT_NODE_WIDTH = 140;
+const DEFAULT_NODE_HEIGHT = 92;
+const MIN_NODE_WIDTH = 96;
+const MIN_NODE_HEIGHT = 64;
+const MAX_NODE_WIDTH = 360;
+const MAX_NODE_HEIGHT = 260;
+const MAX_HISTORY = 60;
 
 class PlantBuilderApp {
   constructor() {
+    this.categories = [];
+    this.equipment = [];
+    this.equipmentById = new Map();
+
     this.nodes = new Map();
     this.connectors = new Map();
     this.selection = null; // { type: 'node' | 'connector', id }
     this.view = { scale: 1, panX: 40, panY: 40 };
-    this.connectMode = false;
-    this.pendingConnectFrom = null;
     this.currentLayoutId = null;
     this.nextId = 1;
+    this.collapsedCategories = new Set();
+    this.searchTerm = "";
+
+    this.history = [];
+    this.historyIndex = -1;
 
     this.els = {
       viewport: document.getElementById("canvas-viewport"),
@@ -22,6 +34,7 @@ class PlantBuilderApp {
       svg: document.getElementById("connector-layer"),
       emptyHint: document.getElementById("canvas-empty-hint"),
       catalogList: document.getElementById("catalog-list"),
+      catalogSearch: document.getElementById("catalog-search"),
       inspectorContent: document.getElementById("inspector-content"),
       zoomLevel: document.getElementById("zoom-level"),
       loadSelect: document.getElementById("load-select"),
@@ -30,30 +43,81 @@ class PlantBuilderApp {
       modalInput: document.getElementById("modal-input"),
     };
 
-    this.buildCatalogPanel();
     this.bindToolbar();
     this.bindCanvasEvents();
     this.bindKeyboard();
+    this.bindCatalogSearch();
     this.refreshLayoutList();
     this.applyViewTransform();
     this.render();
+    this.resetHistory();
+
+    this.loadCatalog();
   }
 
   // ---------- Catalog panel ----------
 
+  async loadCatalog() {
+    this.els.catalogList.innerHTML = `<p class="catalog-loading">Loading equipment&hellip;</p>`;
+    try {
+      const [categories, equipment] = await Promise.all([fetchCategories(), fetchEquipment()]);
+      this.categories = categories;
+      this.equipment = equipment;
+      this.equipmentById = new Map(equipment.map((e) => [e.id, e]));
+      this.buildCatalogPanel();
+      this.render(); // node specs/images may have changed
+    } catch (err) {
+      console.error(err);
+      this.els.catalogList.innerHTML = `<p class="catalog-loading">Couldn't load the equipment catalog. Is the server running?</p>`;
+    }
+  }
+
+  getEquipmentById(id) {
+    return this.equipmentById.get(id) || null;
+  }
+
+  bindCatalogSearch() {
+    this.els.catalogSearch.addEventListener("input", (e) => {
+      this.searchTerm = e.target.value.trim().toLowerCase();
+      this.buildCatalogPanel();
+    });
+    document.getElementById("btn-catalog-refresh").addEventListener("click", () => this.loadCatalog());
+  }
+
   buildCatalogPanel() {
     const list = this.els.catalogList;
     list.innerHTML = "";
-    for (const category of CATEGORIES) {
-      const items = EQUIPMENT.filter((e) => e.category === category.id);
+
+    for (const category of this.categories) {
+      const items = this.equipment.filter((e) => {
+        if (e.category !== category.id) return false;
+        if (!this.searchTerm) return true;
+        return (
+          e.name.toLowerCase().includes(this.searchTerm) ||
+          (e.model || "").toLowerCase().includes(this.searchTerm)
+        );
+      });
       if (items.length === 0) continue;
+
+      const collapsed = this.collapsedCategories.has(category.id);
 
       const group = document.createElement("div");
       group.className = "catalog-group";
 
-      const heading = document.createElement("h3");
-      heading.textContent = category.label;
+      const heading = document.createElement("button");
+      heading.type = "button";
+      heading.className = "catalog-group-heading";
+      heading.innerHTML = `<span class="chevron ${collapsed ? "collapsed" : ""}">&#9662;</span> ${category.label}`;
+      heading.addEventListener("click", () => {
+        if (collapsed) this.collapsedCategories.delete(category.id);
+        else this.collapsedCategories.add(category.id);
+        this.buildCatalogPanel();
+      });
       group.appendChild(heading);
+
+      const itemsWrap = document.createElement("div");
+      itemsWrap.className = "catalog-group-items";
+      if (collapsed) itemsWrap.style.display = "none";
 
       for (const item of items) {
         const el = document.createElement("div");
@@ -61,19 +125,31 @@ class PlantBuilderApp {
         el.draggable = true;
         el.dataset.equipmentId = item.id;
         el.innerHTML = `
-          <span class="catalog-item-icon">${iconSvg(item.icon, item.category)}</span>
+          <span class="catalog-item-icon">${this.thumbHtml(item)}</span>
           <span class="catalog-item-label">
-            <span class="catalog-item-name">${item.name}</span>
-            <span class="catalog-item-model">${item.model}</span>
+            <span class="catalog-item-name">${escapeHtml(item.name)}</span>
+            <span class="catalog-item-model">${escapeHtml(item.model || "")}</span>
           </span>`;
         el.addEventListener("dragstart", (e) => {
           e.dataTransfer.setData("text/equipment-id", item.id);
           e.dataTransfer.effectAllowed = "copy";
         });
-        group.appendChild(el);
+        itemsWrap.appendChild(el);
       }
+      group.appendChild(itemsWrap);
       list.appendChild(group);
     }
+
+    if (list.children.length === 0) {
+      list.innerHTML = `<p class="catalog-loading">No equipment matches "${escapeHtml(this.searchTerm)}".</p>`;
+    }
+  }
+
+  thumbHtml(item) {
+    if (item.imagePath) {
+      return `<img src="${item.imagePath}" alt="${escapeHtml(item.name)}" class="thumb-img" />`;
+    }
+    return iconSvg(item.icon, item.category);
   }
 
   // ---------- Toolbar ----------
@@ -83,7 +159,8 @@ class PlantBuilderApp {
     document.getElementById("btn-save").addEventListener("click", () => this.promptSave());
     document.getElementById("btn-load").addEventListener("click", () => this.loadSelected());
     document.getElementById("btn-delete-layout").addEventListener("click", () => this.deleteSelected());
-    document.getElementById("btn-connect").addEventListener("click", () => this.toggleConnectMode());
+    document.getElementById("btn-undo").addEventListener("click", () => this.undo());
+    document.getElementById("btn-redo").addEventListener("click", () => this.redo());
     document.getElementById("btn-zoom-in").addEventListener("click", () => this.zoomBy(1.2));
     document.getElementById("btn-zoom-out").addEventListener("click", () => this.zoomBy(1 / 1.2));
     document.getElementById("btn-zoom-reset").addEventListener("click", () => this.resetView());
@@ -93,7 +170,7 @@ class PlantBuilderApp {
     document.getElementById("modal-confirm").addEventListener("click", () => this.confirmModal());
   }
 
-  // ---------- Canvas: drop, pan, zoom, node drag ----------
+  // ---------- Canvas: drop, pan, zoom ----------
 
   bindCanvasEvents() {
     const viewport = this.els.viewport;
@@ -104,7 +181,7 @@ class PlantBuilderApp {
       const equipmentId = e.dataTransfer.getData("text/equipment-id");
       if (!equipmentId) return;
       const { x, y } = this.clientToWorld(e.clientX, e.clientY);
-      this.addNode(equipmentId, x - NODE_WIDTH / 2, y - NODE_HEIGHT / 2);
+      this.addNode(equipmentId, x - DEFAULT_NODE_WIDTH / 2, y - DEFAULT_NODE_HEIGHT / 2);
     });
 
     viewport.addEventListener("wheel", (e) => {
@@ -113,7 +190,6 @@ class PlantBuilderApp {
       this.zoomBy(factor, e.clientX, e.clientY);
     }, { passive: false });
 
-    // Panning when dragging the empty canvas background.
     let panning = false;
     let panStart = null;
     viewport.addEventListener("mousedown", (e) => {
@@ -121,7 +197,6 @@ class PlantBuilderApp {
       panning = true;
       panStart = { x: e.clientX, y: e.clientY, panX: this.view.panX, panY: this.view.panY };
       this.setSelection(null);
-      if (this.connectMode) this.cancelConnect();
     });
     window.addEventListener("mousemove", (e) => {
       if (!panning) return;
@@ -135,11 +210,23 @@ class PlantBuilderApp {
   bindKeyboard() {
     window.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) this.redo();
+        else this.undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        this.redo();
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && this.selection) {
         e.preventDefault();
         this.deleteSelection();
       } else if (e.key === "Escape") {
-        if (this.connectMode) this.cancelConnect();
+        this.cancelConnectDrag();
         this.setSelection(null);
       }
     });
@@ -182,9 +269,18 @@ class PlantBuilderApp {
 
   addNode(equipmentId, x, y) {
     const id = `node-${this.nextId++}`;
-    this.nodes.set(id, { id, equipmentId, x, y, notes: "" });
+    this.nodes.set(id, {
+      id,
+      equipmentId,
+      x,
+      y,
+      width: DEFAULT_NODE_WIDTH,
+      height: DEFAULT_NODE_HEIGHT,
+      notes: "",
+    });
     this.setSelection({ type: "node", id });
     this.render();
+    this.pushHistory();
     return id;
   }
 
@@ -193,40 +289,6 @@ class PlantBuilderApp {
     for (const [cid, c] of this.connectors) {
       if (c.from === id || c.to === id) this.connectors.delete(cid);
     }
-  }
-
-  // ---------- Connectors ----------
-
-  toggleConnectMode() {
-    this.connectMode = !this.connectMode;
-    this.pendingConnectFrom = null;
-    document.getElementById("btn-connect").classList.toggle("active", this.connectMode);
-    this.els.viewport.classList.toggle("connect-mode", this.connectMode);
-  }
-
-  cancelConnect() {
-    this.connectMode = false;
-    this.pendingConnectFrom = null;
-    document.getElementById("btn-connect").classList.remove("active");
-    this.els.viewport.classList.remove("connect-mode");
-    this.render();
-  }
-
-  handleNodeClickForConnect(nodeId) {
-    if (!this.pendingConnectFrom) {
-      this.pendingConnectFrom = nodeId;
-      this.render();
-      return;
-    }
-    if (this.pendingConnectFrom === nodeId) {
-      this.pendingConnectFrom = null;
-      this.render();
-      return;
-    }
-    const id = `conn-${this.nextId++}`;
-    this.connectors.set(id, { id, from: this.pendingConnectFrom, to: nodeId });
-    this.pendingConnectFrom = null;
-    this.render();
   }
 
   deleteConnector(id) {
@@ -247,6 +309,7 @@ class PlantBuilderApp {
     else this.deleteConnector(this.selection.id);
     this.selection = null;
     this.render();
+    this.pushHistory();
   }
 
   renderInspector() {
@@ -260,40 +323,47 @@ class PlantBuilderApp {
     if (this.selection.type === "node") {
       const node = this.nodes.get(this.selection.id);
       if (!node) return;
-      const spec = getEquipmentById(node.equipmentId);
+      const spec = this.getEquipmentById(node.equipmentId);
+      if (!spec) return;
       content.className = "";
-      const specRows = Object.entries(spec.specs)
-        .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`)
+      const specRows = Object.entries(spec.specs || {})
+        .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`)
         .join("");
+      const brochureBtn = spec.brochureUrl
+        ? `<a class="brochure-btn" href="${escapeAttr(spec.brochureUrl)}" target="_blank" rel="noopener noreferrer">
+             <span class="brochure-icon">&#128196;</span> View Brochure
+           </a>`
+        : "";
       content.innerHTML = `
         <div class="inspector-header">
-          <span class="inspector-icon">${iconSvg(spec.icon, spec.category)}</span>
+          <span class="inspector-icon">${this.thumbHtml(spec)}</span>
           <div>
-            <div class="inspector-name">${spec.name}</div>
-            <div class="inspector-model">${spec.model}</div>
+            <div class="inspector-name">${escapeHtml(spec.name)}</div>
+            <div class="inspector-model">${escapeHtml(spec.model || "")}</div>
           </div>
         </div>
         <table class="inspector-specs">${specRows}</table>
         <div class="inspector-position">Position: ${Math.round(node.x)}, ${Math.round(node.y)}</div>
+        ${brochureBtn}
         <label class="inspector-notes-label" for="inspector-notes">Notes</label>
         <textarea id="inspector-notes" rows="5" placeholder="Free-text notes for this item…">${escapeHtml(node.notes)}</textarea>
         <button id="inspector-delete" class="danger">Delete from canvas</button>
       `;
-      document.getElementById("inspector-notes").addEventListener("input", (e) => {
-        node.notes = e.target.value;
-      });
+      const textarea = document.getElementById("inspector-notes");
+      textarea.addEventListener("input", (e) => { node.notes = e.target.value; });
+      textarea.addEventListener("blur", () => this.pushHistory());
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     } else {
       const conn = this.connectors.get(this.selection.id);
       if (!conn) return;
-      const fromSpec = getEquipmentById(this.nodes.get(conn.from)?.equipmentId);
-      const toSpec = getEquipmentById(this.nodes.get(conn.to)?.equipmentId);
+      const fromSpec = this.getEquipmentById(this.nodes.get(conn.from)?.equipmentId);
+      const toSpec = this.getEquipmentById(this.nodes.get(conn.to)?.equipmentId);
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
           <div>
             <div class="inspector-name">Connector</div>
-            <div class="inspector-model">${fromSpec?.name || "?"} &rarr; ${toSpec?.name || "?"}</div>
+            <div class="inspector-model">${escapeHtml(fromSpec?.name || "?")} &rarr; ${escapeHtml(toSpec?.name || "?")}</div>
           </div>
         </div>
         <button id="inspector-delete" class="danger">Delete connector</button>
@@ -324,35 +394,41 @@ class PlantBuilderApp {
     for (const el of Array.from(this.els.world.querySelectorAll(".node"))) el.remove();
 
     for (const node of this.nodes.values()) {
-      const spec = getEquipmentById(node.equipmentId);
+      const spec = this.getEquipmentById(node.equipmentId);
       const el = document.createElement("div");
       el.className = "node";
       el.dataset.id = node.id;
       el.style.left = `${node.x}px`;
       el.style.top = `${node.y}px`;
-      el.style.width = `${NODE_WIDTH}px`;
-      el.style.borderColor = colorForCategory(spec.category);
-      if (this.pendingConnectFrom === node.id) el.classList.add("connect-pending");
+      el.style.width = `${node.width}px`;
+      el.style.height = `${node.height}px`;
+      el.style.borderColor = spec ? colorForCategory(spec.category) : "#999";
       el.innerHTML = `
-        <div class="node-icon">${iconSvg(spec.icon, spec.category)}</div>
+        <div class="node-icon">${spec ? this.thumbHtml(spec) : ""}</div>
         <div class="node-label">
-          <div class="node-name">${spec.name}</div>
-          <div class="node-model">${spec.model}</div>
-        </div>`;
+          <div class="node-name">${spec ? escapeHtml(spec.name) : "Unknown equipment"}</div>
+          <div class="node-model">${spec ? escapeHtml(spec.model || "") : ""}</div>
+        </div>
+        <div class="connect-dot connect-dot-n" data-side="n"></div>
+        <div class="connect-dot connect-dot-e" data-side="e"></div>
+        <div class="connect-dot connect-dot-s" data-side="s"></div>
+        <div class="connect-dot connect-dot-w" data-side="w"></div>
+        <div class="resize-handle"></div>
+      `;
 
       el.addEventListener("mousedown", (e) => this.onNodeMouseDown(e, node));
+      for (const dot of el.querySelectorAll(".connect-dot")) {
+        dot.addEventListener("mousedown", (e) => this.onConnectDotMouseDown(e, node));
+      }
+      el.querySelector(".resize-handle").addEventListener("mousedown", (e) => this.onResizeMouseDown(e, node));
+
       this.els.world.appendChild(el);
     }
+    this.renderSelectionHighlight();
   }
 
   onNodeMouseDown(e, node) {
     e.stopPropagation();
-
-    if (this.connectMode) {
-      this.handleNodeClickForConnect(node.id);
-      return;
-    }
-
     this.setSelection({ type: "node", id: node.id });
 
     const startX = e.clientX;
@@ -377,10 +453,119 @@ class PlantBuilderApp {
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (moved) this.renderConnectors();
+      if (moved) {
+        this.renderConnectors();
+        this.pushHistory();
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  onResizeMouseDown(e, node) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { x: node.x, y: node.y, width: node.width, height: node.height };
+    const el = this.els.world.querySelector(`.node[data-id="${node.id}"]`);
+
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / this.view.scale;
+      const dy = (ev.clientY - startY) / this.view.scale;
+      node.width = clamp(start.width + dx, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+      node.height = clamp(start.height + dy, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+      if (el) {
+        el.style.width = `${node.width}px`;
+        el.style.height = `${node.height}px`;
+      }
+      this.renderConnectors();
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // ---------- Connectors (drag from a node's connection dots, draw.io-style) ----------
+
+  onConnectDotMouseDown(e, sourceNode) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const tempLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    tempLine.setAttribute("class", "connector-line connector-line-temp");
+    this.els.svg.appendChild(tempLine);
+
+    let targetNode = null;
+
+    const onMove = (ev) => {
+      const { x, y } = this.clientToWorld(ev.clientX, ev.clientY);
+      const start = this.nodeCenter(sourceNode);
+      tempLine.setAttribute("x1", start.x);
+      tempLine.setAttribute("y1", start.y);
+      tempLine.setAttribute("x2", x);
+      tempLine.setAttribute("y2", y);
+
+      const hovered = this.nodeAtPoint(x, y, sourceNode.id);
+      if (hovered !== targetNode) {
+        if (targetNode) this.setNodeHoverState(targetNode, false);
+        targetNode = hovered;
+        if (targetNode) this.setNodeHoverState(targetNode, true);
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      tempLine.remove();
+      if (targetNode) {
+        this.setNodeHoverState(targetNode, false);
+        this.addConnector(sourceNode.id, targetNode.id);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  cancelConnectDrag() {
+    for (const el of this.els.svg.querySelectorAll(".connector-line-temp")) el.remove();
+  }
+
+  setNodeHoverState(node, isTarget) {
+    const el = this.els.world.querySelector(`.node[data-id="${node.id}"]`);
+    if (el) el.classList.toggle("connect-target", isTarget);
+  }
+
+  nodeAtPoint(worldX, worldY, excludeId) {
+    for (const node of this.nodes.values()) {
+      if (node.id === excludeId) continue;
+      if (worldX >= node.x && worldX <= node.x + node.width && worldY >= node.y && worldY <= node.y + node.height) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  addConnector(fromId, toId) {
+    if (fromId === toId) return;
+    const exists = Array.from(this.connectors.values()).some(
+      (c) => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
+    );
+    if (exists) return;
+    const id = `conn-${this.nextId++}`;
+    this.connectors.set(id, { id, from: fromId, to: toId });
+    this.render();
+    this.pushHistory();
+  }
+
+  nodeCenter(node) {
+    return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
   }
 
   renderConnectors() {
@@ -418,21 +603,73 @@ class PlantBuilderApp {
   }
 
   nodeAnchor(node, towardsNode) {
-    const cx = node.x + NODE_WIDTH / 2;
-    const cy = node.y + NODE_HEIGHT / 2;
-    const tcx = towardsNode.x + NODE_WIDTH / 2;
-    const tcy = towardsNode.y + NODE_HEIGHT / 2;
+    const { x: cx, y: cy } = this.nodeCenter(node);
+    const { x: tcx, y: tcy } = this.nodeCenter(towardsNode);
     const dx = tcx - cx;
     const dy = tcy - cy;
     const angle = Math.atan2(dy, dx);
-    const halfW = NODE_WIDTH / 2;
-    const halfH = NODE_HEIGHT / 2;
-    // Clamp the anchor to the node's rectangular edge.
+    const halfW = node.width / 2;
+    const halfH = node.height / 2;
     const scale = Math.min(
       Math.abs(halfW / Math.cos(angle) || Infinity),
       Math.abs(halfH / Math.sin(angle) || Infinity)
     );
     return { x: cx + Math.cos(angle) * scale, y: cy + Math.sin(angle) * scale };
+  }
+
+  // ---------- Undo / redo ----------
+  //
+  // this.history[this.historyIndex] is always the current state. pushHistory()
+  // is called after every discrete mutation (so it records the post-change
+  // state); undo/redo just walk the index up and down that array.
+
+  snapshot() {
+    return {
+      nodes: Array.from(this.nodes.values()).map((n) => ({ ...n })),
+      connectors: Array.from(this.connectors.values()).map((c) => ({ ...c })),
+    };
+  }
+
+  resetHistory() {
+    this.history = [this.snapshot()];
+    this.historyIndex = 0;
+    this.updateHistoryButtons();
+  }
+
+  pushHistory() {
+    this.history = this.history.slice(0, this.historyIndex + 1);
+    this.history.push(this.snapshot());
+    this.historyIndex++;
+    if (this.history.length > MAX_HISTORY) {
+      this.history.shift();
+      this.historyIndex--;
+    }
+    this.updateHistoryButtons();
+  }
+
+  restoreSnapshot(snap) {
+    this.nodes = new Map(snap.nodes.map((n) => [n.id, { ...n }]));
+    this.connectors = new Map(snap.connectors.map((c) => [c.id, { ...c }]));
+    this.selection = null;
+    this.render();
+    this.updateHistoryButtons();
+  }
+
+  undo() {
+    if (this.historyIndex <= 0) return;
+    this.historyIndex--;
+    this.restoreSnapshot(this.history[this.historyIndex]);
+  }
+
+  redo() {
+    if (this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex++;
+    this.restoreSnapshot(this.history[this.historyIndex]);
+  }
+
+  updateHistoryButtons() {
+    document.getElementById("btn-undo").disabled = this.historyIndex <= 0;
+    document.getElementById("btn-redo").disabled = this.historyIndex >= this.history.length - 1;
   }
 
   // ---------- Save / Load ----------
@@ -445,6 +682,7 @@ class PlantBuilderApp {
     this.setSelection(null);
     this.resetView();
     this.render();
+    this.resetHistory();
   }
 
   promptSave() {
@@ -467,11 +705,18 @@ class PlantBuilderApp {
 
     this.nodes.clear();
     this.connectors.clear();
-    for (const n of layout.nodes) this.nodes.set(n.id, n);
+    for (const n of layout.nodes) {
+      this.nodes.set(n.id, {
+        width: DEFAULT_NODE_WIDTH,
+        height: DEFAULT_NODE_HEIGHT,
+        ...n,
+      });
+    }
     for (const c of layout.connectors) this.connectors.set(c.id, c);
     this.currentLayoutId = layout.id;
     this.setSelection(null);
     this.render();
+    this.resetHistory();
   }
 
   deleteSelected() {
@@ -545,8 +790,8 @@ class PlantBuilderApp {
     for (const node of this.nodes.values()) {
       minX = Math.min(minX, node.x);
       minY = Math.min(minY, node.y);
-      maxX = Math.max(maxX, node.x + NODE_WIDTH);
-      maxY = Math.max(maxY, node.y + NODE_HEIGHT);
+      maxX = Math.max(maxX, node.x + node.width);
+      maxY = Math.max(maxY, node.y + node.height);
     }
     const pad = 40;
     return { minX: minX - pad, minY: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
@@ -562,9 +807,9 @@ class PlantBuilderApp {
     const header = document.createElement("div");
     header.className = "export-header";
     header.innerHTML = `
-      <div class="export-brand-mark">IE</div>
+      <div class="export-brand-mark">OPS</div>
       <div>
-        <div class="export-brand-name">Ironpeak Equipment</div>
+        <div class="export-brand-name">OPS Group</div>
         <div class="export-brand-tagline">Proposed Plant Layout</div>
       </div>
       <div class="export-date">${new Date().toLocaleDateString()}</div>
@@ -577,8 +822,10 @@ class PlantBuilderApp {
 
     const inner = document.createElement("div");
     inner.style.transform = `translate(${-bounds.minX}px, ${-bounds.minY}px)`;
-    inner.appendChild(this.els.world.cloneNode(true));
-    inner.firstChild.style.transform = "none";
+    const worldClone = this.els.world.cloneNode(true);
+    worldClone.style.transform = "none";
+    for (const dot of worldClone.querySelectorAll(".connect-dot, .resize-handle")) dot.remove();
+    inner.appendChild(worldClone);
     canvasClone.appendChild(inner);
 
     const bom = this.buildBomTable();
@@ -604,8 +851,8 @@ class PlantBuilderApp {
 
     const table = document.createElement("table");
     const rows = Array.from(this.nodes.values()).map((node) => {
-      const spec = getEquipmentById(node.equipmentId);
-      return `<tr><td>${spec.name}</td><td>${spec.model}</td><td>${escapeHtml(node.notes || "")}</td></tr>`;
+      const spec = this.getEquipmentById(node.equipmentId);
+      return `<tr><td>${escapeHtml(spec?.name || "Unknown")}</td><td>${escapeHtml(spec?.model || "")}</td><td>${escapeHtml(node.notes || "")}</td></tr>`;
     });
     table.innerHTML = `
       <thead><tr><th>Equipment</th><th>Model</th><th>Notes</th></tr></thead>
@@ -615,10 +862,18 @@ class PlantBuilderApp {
   }
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, "&quot;");
 }
 
 document.addEventListener("DOMContentLoaded", () => {

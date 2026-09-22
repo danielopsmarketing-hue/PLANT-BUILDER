@@ -1,4 +1,4 @@
-# Plant Builder
+# OPS Group Plant Builder
 
 A drag-and-drop visual tool for sales reps: drag crushing/screening
 equipment onto a canvas, arrange it into a flow (hopper → crusher → screen
@@ -10,20 +10,46 @@ throughput math, no tonnage calculation, and no compatibility validation
 between equipment. If a layout looks right and reads clearly, it's correct.
 Keep it that way — see "Constraints" below.
 
-## Current state: single-user prototype
+## Current state
 
-This is a static, single-browser HTML/JS/CSS prototype. No build step, no
-backend. Open `index.html` in a browser (or serve the folder statically)
-and it works.
+The equipment catalog now has a real backend: a small Express API backs a
+central catalog with an admin UI for managing listings (including image
+uploads), and the sales-facing builder reads from it live. Saved *layouts*
+(what a rep draws) are still browser `localStorage` only — that's the next
+piece of real persistence to build; see "What needs to be built next".
 
-What it does:
+### Running it
 
-- Equipment catalog panel, grouped by category, drag-and-drop onto canvas
-- Canvas nodes: place, move, select, delete
-- Directional connectors: toggle "Connect" mode, click two nodes to draw an
-  arrow between them; click a connector, then delete it
-- Inspector panel: selected item's spec sheet, position, and a free-text
-  notes field
+```
+cd server
+npm install
+npm start
+```
+
+Then open `http://localhost:4000` — the server serves the frontend
+(`public/`) and the API from one process. The equipment catalog is at
+`http://localhost:4000/admin.html`.
+
+On first run the server seeds `server/data/equipment.json` with the
+placeholder catalog (from `server/seed-data.js`). Edit, replace, or wipe
+that file from the admin UI — nothing about it is permanent.
+
+### What it does
+
+**Builder (`index.html`)**
+
+- Equipment catalog panel, grouped by category, searchable, collapsible
+  groups, drag-and-drop onto canvas
+- Canvas nodes: place, move, resize (drag the corner handle, like drawio),
+  select, delete
+- Directional connectors, drawio-style: hover a node to reveal four
+  connection dots, drag from one to another node to draw an arrow; click a
+  connector to select it, then delete
+- Undo/redo (toolbar buttons or Ctrl+Z / Ctrl+Shift+Z), covering adds,
+  deletes, moves, resizes, and connections
+- Inspector panel: selected item's spec sheet, position, a **View
+  Brochure** button (only shown when that equipment has a brochure link
+  set in the catalog), and a free-text notes field
 - Zoom (scroll wheel, toolbar buttons) and pan (drag empty canvas)
 - Export to a branded PNG (via html2canvas), including a simple equipment
   list alongside the flow diagram
@@ -31,63 +57,75 @@ What it does:
   it's a stand-in that proves the save/load interaction works. Layouts do
   not sync across browsers, devices, or users.
 
-Project layout:
+**Admin (`admin.html`)**
+
+- Table of every catalog item with thumbnail, name, model, category, and
+  brochure status
+- Add/edit form: name, model, category, a placeholder icon (used as the
+  fallback shape until a real image is uploaded), an image upload, an
+  arbitrary list of spec rows (label + value), and a brochure link
+- Delete, with confirmation
+
+Changes made here are what reps see the next time they load or refresh the
+builder's catalog panel — this is the "one source of truth... maintained by
+sales ops" piece from the original brief.
+
+### Project layout
 
 ```
-index.html
-css/styles.css     — all styling, including the off-screen export layout
-js/catalog-data.js — placeholder equipment catalog
-js/icons.js         — placeholder geometric icons per equipment category
-js/storage.js       — localStorage save/load
-js/app.js           — canvas, nodes, connectors, inspector, export, app wiring
+server/
+  server.js       — Express app: static hosting + REST API + uploads
+  db.js           — JSON-file-backed CRUD for the equipment catalog
+  seed-data.js    — placeholder catalog loaded on first run
+  data/           — equipment.json lives here (gitignored)
+  uploads/        — uploaded product images (gitignored)
+public/
+  index.html      — the builder
+  admin.html      — the catalog admin page
+  css/styles.css  — builder styling (shared brand tokens)
+  css/admin.css   — admin-page-only styling
+  js/api.js       — fetch wrappers for the REST API
+  js/app.js       — canvas, nodes, connectors, inspector, export, undo/redo
+  js/admin.js     — admin page logic
+  js/icons.js     — placeholder geometric icons per category (fallback
+                    when a listing has no uploaded image)
+  js/storage.js   — localStorage save/load for layouts
 ```
 
-Placeholder branding ("Ironpeak Equipment") and a placeholder equipment
-catalog (generic jaw/cone/impact crushers, screens, conveyors, a radial
-stacker, a stockpile) are in place so the prototype is clickable. Both need
-to be replaced with real data — see "Open decisions" below.
+Real branding (OPS Group — navy/blue-gray, matching the supplied logo) is
+in place in the header, toolbar, and PNG export. The actual logo file
+itself isn't wired in yet — pasted images in chat don't come through with
+a filesystem path this environment can read, so the mark is currently a
+text lockup ("OPS"). Push the logo file into the repo (e.g.
+`public/assets/ops-group-logo.svg`) or share a URL and it'll be dropped
+into the brand mark and export header directly.
 
 ## What needs to be built next
 
-The prototype validates the UI. The real work ahead is turning this into a
-multi-user, persisted, deployed application:
-
-1. **Backend + database** — equipment catalog, saved layouts, and
-   connectors need to live server-side, not in browser `localStorage`.
-2. **Accounts/auth** — reps log in; layouts are tied to an account.
-3. **Central equipment catalog with admin management** — one source of
-   truth for equipment data, maintained by sales ops, not by individual
-   reps.
-4. **Real branding and real equipment data** — replace every placeholder.
-5. **Deployment** — hosted somewhere reps can reach from anywhere, not a
-   local file.
-
-None of this has been started yet; the items below need answers first.
+1. **Saved-layout persistence** — layouts still live in `localStorage`
+   only. Moving them server-side (with the same JSON-file or a real DB) is
+   the next piece, same shape as the equipment catalog work just done.
+2. **Accounts/auth** — reps log in; layouts are tied to an account. Needed
+   before saved-layout persistence can be multi-user.
+3. **Deployment** — hosted somewhere reps can reach from anywhere, not
+   `localhost`.
 
 ## Constraints that should not change without a conversation
 
 - No engineering/throughput calculations. Visual layout only.
-- Equipment catalog is centrally managed, not per-rep.
+- Equipment catalog is centrally managed, not per-rep. (Now enforced by
+  the backend — there's no per-rep catalog editing path in the builder.)
 - Export needs to stay presentation-quality — this is a sales leave-behind,
   not a technical drawing.
 
 ## Open decisions (need your input before or during the next phase)
 
-These are flagged, not guessed at, per the project brief:
-
-- Real company name, logo, brand colors — the prototype uses a placeholder
-  brand ("Ironpeak Equipment", navy/amber) purely so the export looks
-  finished.
-- Real equipment lineup: model names, categories, key specs to display,
-  and any images/icons we have rights to use — the prototype uses generic
-  placeholder models and simple geometric icons.
+- Real logo file — see note above; drop it in and it's a five-minute wire-up.
+- Real equipment lineup, specs, and product images/brochures — the admin
+  UI is ready for these; someone needs to actually enter them.
 - Whether reps can see each other's customer layouts, or only their own —
-  this determines the data model and permissions for phase 2 and hasn't
+  this determines the data model for saved-layout persistence and hasn't
   been decided.
-- What exactly the exported file needs to include beyond the flow image —
-  the prototype now includes a simple equipment list (name, model, notes)
-  under the diagram as a starting point; confirm this is the right shape,
-  still no math.
 - Hosting preference, if there is one already.
 
-Answering these unblocks the backend/auth/deployment phase.
+Answering these unblocks the remaining backend/auth/deployment work.

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPS Group Plant Builder — Admin</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/admin.css" />
+</head>
+<body class="admin-body">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">OPS</div>
+      <div class="brand-text">
+        <div class="brand-name">OPS Group</div>
+        <div class="brand-tagline">Equipment Catalog Admin</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <a class="back-link" href="index.html">&larr; Back to Plant Builder</a>
+      <button id="btn-add-equipment" class="primary">+ Add Equipment</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <p class="admin-intro">
+      This is the single source of truth for the equipment catalog reps see in the Plant Builder.
+      Changes here appear the next time a rep opens or refreshes the catalog panel.
+    </p>
+
+    <div id="admin-status" class="admin-status hidden"></div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Name</th>
+          <th>Model</th>
+          <th>Category</th>
+          <th>Brochure</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="admin-table-body">
+        <tr><td colspan="6" class="admin-loading">Loading equipment&hellip;</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <div id="equipment-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal equipment-modal">
+      <h3 id="equipment-modal-title">Add Equipment</h3>
+      <form id="equipment-form">
+        <input type="hidden" id="field-id" />
+
+        <div class="field-row">
+          <label for="field-name">Name</label>
+          <input type="text" id="field-name" required placeholder="e.g. Jaw Crusher" />
+        </div>
+
+        <div class="field-row two-col">
+          <div>
+            <label for="field-model">Model</label>
+            <input type="text" id="field-model" placeholder="e.g. JC-2436" />
+          </div>
+          <div>
+            <label for="field-category">Category</label>
+            <select id="field-category" required></select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label for="field-icon">Placeholder icon (used until an image is uploaded)</label>
+          <select id="field-icon">
+            <option value="hopper">Hopper</option>
+            <option value="crusher">Crusher</option>
+            <option value="screen">Screen</option>
+            <option value="conveyor">Conveyor</option>
+            <option value="stacker">Stacker</option>
+            <option value="stockpile">Stockpile</option>
+            <option value="generic">Generic</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="field-image">Product image</label>
+          <input type="file" id="field-image" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+          <div class="image-preview-row" id="image-preview-row" hidden>
+            <img id="image-preview" alt="Preview" />
+            <button type="button" id="btn-remove-image" class="link-btn">Remove image</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label>Specs</label>
+          <div id="specs-rows"></div>
+          <button type="button" id="btn-add-spec" class="link-btn">+ Add spec row</button>
+        </div>
+
+        <div class="field-row">
+          <label for="field-brochure">Brochure link</label>
+          <input type="url" id="field-brochure" placeholder="https://…" />
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="equipment-modal-cancel">Cancel</button>
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

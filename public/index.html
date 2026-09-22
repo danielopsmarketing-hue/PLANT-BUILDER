@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Plant Builder — Ironpeak Equipment</title>
+<title>OPS Group Plant Builder</title>
 <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark">IE</div>
+      <div class="brand-mark">OPS</div>
       <div class="brand-text">
-        <div class="brand-name">Ironpeak Equipment</div>
+        <div class="brand-name">OPS Group</div>
         <div class="brand-tagline">Plant Builder</div>
       </div>
     </div>
@@ -23,7 +23,8 @@
       <button id="btn-load" title="Load selected layout">Load</button>
       <button id="btn-delete-layout" title="Delete selected saved layout" class="danger">Delete</button>
       <span class="toolbar-sep"></span>
-      <button id="btn-connect" title="Click two pieces of equipment to connect them">Connect</button>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">&#8630;</button>
+      <button id="btn-redo" title="Redo (Ctrl+Shift+Z)">&#8631;</button>
       <span class="toolbar-sep"></span>
       <button id="btn-zoom-out" title="Zoom out">&minus;</button>
       <span id="zoom-level">100%</span>
@@ -37,8 +38,13 @@
   <main class="workspace">
     <aside class="catalog-panel">
       <h2>Equipment</h2>
+      <div class="catalog-search-row">
+        <input type="text" id="catalog-search" placeholder="Search equipment..." />
+        <button id="btn-catalog-refresh" title="Reload catalog from server">&#8635;</button>
+      </div>
       <div id="catalog-list"></div>
       <p class="catalog-hint">Drag an item onto the canvas.</p>
+      <p class="catalog-hint"><a href="admin.html">Manage equipment catalog &rarr;</a></p>
     </aside>
 
     <section class="canvas-viewport" id="canvas-viewport">
