@@ -1,14 +1,5 @@
 .admin-body { display: block; height: auto; min-height: 100%; }
 
-.back-link {
-  color: #fff;
-  font-size: 13px;
-  text-decoration: none;
-  opacity: 0.9;
-  margin-right: 8px;
-}
-.back-link:hover { opacity: 1; text-decoration: underline; }
-
 .admin-main {
   max-width: 960px;
   margin: 0 auto;

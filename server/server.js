@@ -37,8 +37,38 @@ const upload = multer({
   },
 });
 
+// Guards the admin page and every catalog-editing request. No-op when
+// ADMIN_USERNAME/ADMIN_PASSWORD aren't set, so local dev needs no setup —
+// but set them before deploying anywhere public, or anyone with the URL
+// can rewrite or delete the whole catalog.
+function requireAdminAuth(req, res, next) {
+  const expectedUser = process.env.ADMIN_USERNAME;
+  const expectedPass = process.env.ADMIN_PASSWORD;
+  if (!expectedUser || !expectedPass) return next();
+
+  const header = req.headers.authorization || "";
+  const [scheme, encoded] = header.split(" ");
+  if (scheme === "Basic" && encoded) {
+    const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+    const sep = decoded.indexOf(":");
+    const user = sep === -1 ? decoded : decoded.slice(0, sep);
+    const pass = sep === -1 ? "" : decoded.slice(sep + 1);
+    if (safeEqual(user, expectedUser) && safeEqual(pass, expectedPass)) return next();
+  }
+  res.set("WWW-Authenticate", 'Basic realm="Plant Builder Admin"');
+  res.status(401).send("Authentication required.");
+}
+
+function safeEqual(a, b) {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 const app = express();
 app.use(express.json());
+app.use("/admin.html", requireAdminAuth);
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/uploads", express.static(UPLOADS_DIR));
 
@@ -78,7 +108,7 @@ app.get("/api/equipment/:id", (req, res) => {
   res.json(item);
 });
 
-app.post("/api/equipment", upload.single("image"), (req, res) => {
+app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) => {
   const { name, model, category, icon, brochureUrl } = req.body;
   if (!name || !category) {
     if (req.file) removeUploadedFile(req.file.filename);
@@ -96,7 +126,7 @@ app.post("/api/equipment", upload.single("image"), (req, res) => {
   res.status(201).json(item);
 });
 
-app.put("/api/equipment/:id", upload.single("image"), (req, res) => {
+app.put("/api/equipment/:id", requireAdminAuth, upload.single("image"), (req, res) => {
   const existing = db.get(req.params.id);
   if (!existing) {
     if (req.file) removeUploadedFile(req.file.filename);
@@ -125,7 +155,7 @@ app.put("/api/equipment/:id", upload.single("image"), (req, res) => {
   res.json(updated);
 });
 
-app.delete("/api/equipment/:id", (req, res) => {
+app.delete("/api/equipment/:id", requireAdminAuth, (req, res) => {
   const existing = db.get(req.params.id);
   if (!existing) return res.status(404).json({ error: "Not found" });
   if (existing.imagePath) removeUploadedFile(existing.imagePath);

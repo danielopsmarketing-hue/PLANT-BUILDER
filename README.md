@@ -27,12 +27,28 @@ npm start
 ```
 
 Then open `http://localhost:4000` — the server serves the frontend
-(`public/`) and the API from one process. The equipment catalog is at
-`http://localhost:4000/admin.html`.
+(`public/`) and the API from one process. A nav pill in the top bar
+("Builder" / "Equipment Library") switches between the two pages.
 
 On first run the server seeds `server/data/equipment.json` with the
 placeholder catalog (from `server/seed-data.js`). Edit, replace, or wipe
 that file from the admin UI — nothing about it is permanent.
+
+### Protecting the admin page
+
+The Equipment Library page and every catalog-editing request (add/edit/
+delete, image upload) are gated behind HTTP Basic Auth — but only when
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` env vars are set. Unset (the local
+default), there's no login prompt at all, so local dev stays frictionless.
+**Before deploying anywhere reachable from outside your machine, set both**,
+or anyone with the URL can rewrite or delete the whole catalog:
+
+```
+ADMIN_USERNAME=youradminname ADMIN_PASSWORD=a-real-password npm start
+```
+
+The builder itself (`index.html`) and the read-only catalog API stay public
+either way — reps don't need a login to build layouts.
 
 ### What it does
 
@@ -93,22 +109,49 @@ public/
 ```
 
 Real branding (OPS Group — navy/blue-gray, matching the supplied logo) is
-in place in the header, toolbar, and PNG export. The actual logo file
-itself isn't wired in yet — pasted images in chat don't come through with
-a filesystem path this environment can read, so the mark is currently a
-text lockup ("OPS"). Push the logo file into the repo (e.g.
-`public/assets/ops-group-logo.svg`) or share a URL and it'll be dropped
-into the brand mark and export header directly.
+in place in the header, toolbar, and PNG export. The actual logo *file*
+itself still isn't wired in — a logo pasted directly into a chat message
+doesn't arrive with a filesystem path this environment can read (a
+markdown/text file attached the normal way does, which is how the project
+brief came through). The brand mark is a text lockup ("OPS") as a
+stand-in. To finish this: attach the logo as a **file** rather than a
+pasted/inline image, or push it into the repo directly (e.g.
+`public/assets/ops-group-logo.svg` or `.png`) and say so — either way it's
+a five-minute wire-up once the file itself is reachable.
+
+## Deploying (Railway)
+
+Two things the host needs to support, because the catalog store and
+uploaded images are files on disk, not a database: a long-running Node
+process (not pure serverless), and a **persistent volume** — some hosts
+wipe local disk on every redeploy, which would silently erase the catalog.
+
+1. Push this branch (or merge it to whatever branch you deploy from).
+2. On [railway.app](https://railway.app), New Project → Deploy from GitHub
+   repo → pick this repo/branch.
+3. In the service's Settings, set **Root Directory** to `server` (that's
+   where `package.json` lives). Railway auto-detects the Node build/start
+   commands (`npm install` / `npm start`) from there.
+4. Add a **Volume** (Settings → Volumes) and mount it so it covers
+   `data/` and `uploads/` relative to `server.js` — check the deploy logs
+   or Railway's shell to confirm the exact absolute path in the running
+   container before finalizing the mount path, since it depends on how
+   Railway lays out the root-directory build.
+5. In **Variables**, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (see above).
+   Railway sets `PORT` automatically — the app already reads
+   `process.env.PORT`, no change needed.
+6. Deploy. Railway gives you a `*.up.railway.app` URL — the builder is at
+   `/`, the catalog admin at `/admin.html`.
 
 ## What needs to be built next
 
 1. **Saved-layout persistence** — layouts still live in `localStorage`
    only. Moving them server-side (with the same JSON-file or a real DB) is
    the next piece, same shape as the equipment catalog work just done.
-2. **Accounts/auth** — reps log in; layouts are tied to an account. Needed
-   before saved-layout persistence can be multi-user.
-3. **Deployment** — hosted somewhere reps can reach from anywhere, not
-   `localhost`.
+2. **Accounts/auth** — reps log in; layouts are tied to an account. The
+   admin page now has a basic password gate, but that's separate from
+   rep-facing accounts, which are still needed before saved-layout
+   persistence can be multi-user.
 
 ## Constraints that should not change without a conversation
 
@@ -120,12 +163,12 @@ into the brand mark and export header directly.
 
 ## Open decisions (need your input before or during the next phase)
 
-- Real logo file — see note above; drop it in and it's a five-minute wire-up.
+- Real logo file — see note above.
 - Real equipment lineup, specs, and product images/brochures — the admin
   UI is ready for these; someone needs to actually enter them.
 - Whether reps can see each other's customer layouts, or only their own —
   this determines the data model for saved-layout persistence and hasn't
   been decided.
-- Hosting preference, if there is one already.
+- ~~Hosting preference~~ — Railway, see "Deploying" above.
 
-Answering these unblocks the remaining backend/auth/deployment work.
+Answering the rest unblocks the remaining backend/auth work.
