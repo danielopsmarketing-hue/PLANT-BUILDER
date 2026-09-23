@@ -312,11 +312,24 @@ body {
     linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px),
     linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px);
   background-size: 24px 24px;
-  cursor: grab;
+  cursor: default;
   transition: box-shadow 0.12s ease;
 }
-.canvas-viewport:active { cursor: grabbing; }
+/* Default drag on empty canvas is rubber-band select, not pan -- panning
+   is Space+drag or middle-mouse-drag (draw.io convention), so only show
+   the grab cursor while that's actually available/active. */
+.canvas-viewport.space-pan { cursor: grab; }
+.canvas-viewport.panning,
+.canvas-viewport.space-pan:active { cursor: grabbing; }
 .canvas-viewport.drag-over { box-shadow: inset 0 0 0 3px var(--brand-accent); }
+
+.selection-rect {
+  position: absolute;
+  border: 1px solid var(--brand-accent);
+  background: rgba(47, 111, 214, 0.08);
+  pointer-events: none;
+  z-index: 50;
+}
 
 /* Floating preview that follows the cursor during a palette drag (custom
    mouse-driven drag-and-drop, not native HTML5 DnD -- see startPaletteDrag). */
@@ -354,13 +367,23 @@ body {
 }
 
 .connector-line {
+  fill: none;
   stroke: #374151;
   stroke-width: 2.5;
+  stroke-linecap: round;
   pointer-events: stroke;
   cursor: pointer;
 }
 .connector-line.selected { stroke: var(--brand-accent); stroke-width: 3.5; }
 .connector-line-temp { stroke: var(--brand-accent); stroke-dasharray: 6 4; pointer-events: none; }
+
+.guide-layer { z-index: 2; }
+.align-guide {
+  stroke: #ff4d6d;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
 
 .canvas-empty-hint {
   position: absolute;
@@ -371,7 +394,13 @@ body {
   font-size: 14px;
   pointer-events: none;
   text-align: center;
-  max-width: 300px;
+  max-width: 320px;
+}
+.canvas-empty-subhint {
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.75;
+  margin-top: 8px;
 }
 
 /* Free-standing icon + name, AggFlow-style -- no card/box by default. A
@@ -599,6 +628,75 @@ button.danger {
 button.danger:hover { background: #fef2f2; }
 
 .inspector-panel button.danger { width: 100%; }
+
+.inspector-multi-hint { font-size: 12px; color: var(--text-muted); margin: 2px 0 4px; }
+
+.inspector-secondary-btn {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 5px;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.inspector-secondary-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+
+.align-toolbar { margin: 4px 0 14px; }
+.align-toolbar-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 10px 0 5px;
+}
+.align-toolbar-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.align-toolbar-row-2 { grid-template-columns: repeat(2, 1fr); }
+.align-toolbar-row button {
+  padding: 7px 4px;
+  font-size: 11.5px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+}
+.align-toolbar-row button:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); }
+.align-toolbar-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- Context menu ---------- */
+
+.context-menu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.16);
+  padding: 4px;
+  z-index: 300;
+  min-width: 170px;
+}
+.context-menu.hidden { display: none; }
+.context-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+.context-menu-item:hover { background: #eef2f7; }
+.context-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
 
 /* ---------- Modal ---------- */
 

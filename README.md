@@ -83,29 +83,71 @@ either way — reps don't need a login to build layouts.
   groups, 2-column icon grid.
 - Canvas nodes: place, move, resize (drag the corner handle, like drawio),
   select, delete.
-- Directional connectors, drawio-style hover arrows: hover a node *or* a
-  Tools shape to reveal four arrow chevrons sitting outside its edges
-  (not dots on the border), drag from one to another (any mix of
-  equipment/shapes) to draw an arrow; click a connector to select it,
-  then delete. Freeform lines magnet-snap to a node/shape edge too when
-  you drag an endpoint near one, or fall back to the grid otherwise.
+- **Orthogonal connectors, auto-routed**: hover a node or Tools shape to
+  reveal four arrow chevrons outside its edges, drag from one to another
+  (any mix of equipment/shapes) to connect them. Connections render as
+  clean Manhattan (horizontal/vertical-only) paths with small rounded
+  corners, not straight diagonal lines — a straight run when the two
+  anchor points already line up, otherwise a single routed bend through
+  the midpoint. The path is recomputed from live box positions on every
+  render, so moving either end reroutes automatically; nothing is stored
+  as fixed screen coordinates. Freeform lines (from the Tools panel) stay
+  simple two-point lines and still magnet-snap to a node/shape edge.
+- **Multi-selection**: shift-click to add/remove a node, shape, connector,
+  or line from the selection; drag on empty canvas to draw a selection
+  rectangle (everything it touches gets selected). Dragging any selected
+  item moves the whole selection together, preserving relative positions
+  and every connection between them.
+- **Alignment guides**: dragging a node or shape near another one's edges
+  or center shows a temporary red guide line and snaps into place —
+  prioritized over grid-snap when both are in range. Disappears the
+  instant you let go.
+- **Align / distribute**: with 2+ objects selected, the Inspector panel
+  shows Align Left/Center/Right/Top/Middle/Bottom; with 3+, Distribute
+  Horizontally/Vertically (equal gaps, not equal centers).
+- **Right-click context menu** on a node/shape (Duplicate, Delete, Bring
+  to Front, Send to Back) or a connector (Reverse Direction, Delete).
+- **Keyboard shortcuts**: Delete/Backspace, Ctrl+Z / Ctrl+Shift+Z (undo/
+  redo), Ctrl+D (duplicate selection, offset by one grid cell), Ctrl+A
+  (select all), Ctrl+C/X/V (copy/cut/paste — pasted items get fresh IDs,
+  and only the connections that were fully inside the copied selection
+  come along), Arrow keys (nudge 1px), Shift+Arrow (nudge one grid unit),
+  Escape (clear selection / cancel an in-progress connection).
 - Snap-to-grid: dropping, moving, or resizing a node or shape snaps to the
   24px grid (matching the visible background grid). Hold Alt while
   dragging to place freely without snapping.
 - Undo/redo (toolbar buttons or Ctrl+Z / Ctrl+Shift+Z), covering adds,
-  deletes, moves, resizes, and connections
+  deletes, moves, resizes, connections, alignment, duplication, and paste
+  — a real history stack (array of full-state snapshots), not a visual
+  refresh.
 - Inspector panel: selected item's Make (brand), Model, Category, and
   Weight (pulled out of the spec sheet if present) as a detail table,
   followed by any other specs, position, **Check Stock** and **View
   Brochure** buttons (live links when the item has a stock/brochure URL
   set in the catalog, otherwise disabled with a tooltip explaining why),
-  and a free-text notes field
-- Zoom (scroll wheel, toolbar buttons) and pan (drag empty canvas)
+  and a free-text notes field. Selecting 2+ objects switches this panel
+  to the multi-select summary + align/distribute controls instead.
+- Zoom (scroll wheel, or Ctrl+wheel/toolbar buttons), centered on the
+  cursor. **Panning is Space+drag or middle-mouse-drag** — a plain
+  left-drag on empty canvas draws a selection rectangle instead, so
+  "move the canvas" and "select several things" are never the same
+  gesture and neither one can accidentally move equipment.
 - Export to a branded PNG (via html2canvas), including a simple equipment
   list alongside the flow diagram
 - Save/load via browser `localStorage` — **this is not real persistence**,
   it's a stand-in that proves the save/load interaction works. Layouts do
   not sync across browsers, devices, or users.
+
+**What's not built yet** (a real diagramming engine is a large system;
+this is the foundation + connections + editing phases, not the whole
+thing): draggable waypoints/manual segment editing on a connector once
+it's created, junction nodes and automatic line-crossing bridges (two
+unrelated connectors that cross currently just overlap visually), a
+connection can't carry a text label yet, no persistent object grouping or
+locking, no minimap, and routing avoids nothing — it doesn't yet route
+*around* equipment that sits between two connected items, just between
+their anchor points. All of these are real follow-up work, not corners
+intentionally cut for the demo.
 
 **Admin (`admin.html`)**
 

@@ -79,9 +79,11 @@
     <section class="canvas-viewport" id="canvas-viewport">
       <div class="canvas-world" id="canvas-world">
         <svg id="connector-layer" class="connector-layer"></svg>
+        <svg id="guide-layer" class="connector-layer guide-layer"></svg>
       </div>
       <div class="canvas-empty-hint" id="canvas-empty-hint">
         Drag equipment or a tool from the left panel to start building a flow.
+        <div class="canvas-empty-subhint">Drag empty canvas to select · hold Space or middle-click to pan · scroll to zoom</div>
       </div>
     </section>
 
@@ -92,6 +94,8 @@
       </div>
     </aside>
   </main>
+
+  <div id="context-menu" class="context-menu hidden"></div>
 
   <div id="modal-backdrop" class="modal-backdrop hidden">
     <div class="modal">
