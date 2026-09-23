@@ -83,16 +83,28 @@ either way — reps don't need a login to build layouts.
   groups, 2-column icon grid.
 - Canvas nodes: place, move, resize (drag the corner handle, like drawio),
   select, delete.
-- **Orthogonal connectors, auto-routed**: hover a node or Tools shape to
-  reveal four arrow chevrons outside its edges, drag from one to another
-  (any mix of equipment/shapes) to connect them. Connections render as
-  clean Manhattan (horizontal/vertical-only) paths with small rounded
-  corners, not straight diagonal lines — a straight run when the two
-  anchor points already line up, otherwise a single routed bend through
-  the midpoint. The path is recomputed from live box positions on every
-  render, so moving either end reroutes automatically; nothing is stored
-  as fixed screen coordinates. Freeform lines (from the Tools panel) stay
-  simple two-point lines and still magnet-snap to a node/shape edge.
+- **Orthogonal connectors, auto-routed by default, editable on demand**:
+  hover a node or Tools shape to reveal four arrow chevrons outside its
+  edges, drag from one to another (any mix of equipment/shapes) to
+  connect them. Connections render as clean Manhattan (horizontal/
+  vertical-only) paths with small rounded corners — a straight run when
+  the two anchor points line up, one routed bend otherwise. In "auto"
+  mode the path is recomputed from live box positions on every render, so
+  moving either end reroutes automatically. Select a connector and its
+  interior segments (not the two ends anchored to equipment) show small
+  drag grips — dragging one slides that segment, switching the connector
+  to "manual" mode and remembering the shape from then on; right-click →
+  **Reset Route** goes back to automatic. Right-click → **Add Waypoint**
+  inserts a new bend wherever you right-clicked, including on a straight
+  connector that has no bends yet. Right-click → **Add/Edit Label** (or
+  double-click the line) attaches a small text label that stays centered
+  on the path as it moves. **Crossing vs. junction**: two connectors that
+  don't share an equipment endpoint but cross get a small arc "hop" on
+  the later-drawn one, so a crossing never looks like a connection — a
+  distinction the spec calls out as important for technical diagrams.
+  Freeform lines (from the Tools panel) stay simple two-point lines and
+  still magnet-snap to a node/shape edge; the routing/waypoint machinery
+  above is connector-specific.
 - **Multi-selection**: shift-click to add/remove a node, shape, connector,
   or line from the selection; drag on empty canvas to draw a selection
   rectangle (everything it touches gets selected). Dragging any selected
@@ -139,15 +151,16 @@ either way — reps don't need a login to build layouts.
   not sync across browsers, devices, or users.
 
 **What's not built yet** (a real diagramming engine is a large system;
-this is the foundation + connections + editing phases, not the whole
-thing): draggable waypoints/manual segment editing on a connector once
-it's created, junction nodes and automatic line-crossing bridges (two
-unrelated connectors that cross currently just overlap visually), a
-connection can't carry a text label yet, no persistent object grouping or
-locking, no minimap, and routing avoids nothing — it doesn't yet route
-*around* equipment that sits between two connected items, just between
-their anchor points. All of these are real follow-up work, not corners
-intentionally cut for the demo.
+this is the foundation + connections + editing + advanced-connections
+phases, not the whole thing): **explicit junction nodes** — a persisted
+entity you deliberately create by dragging one connector's endpoint onto
+another connector, as opposed to the automatic crossing-bridge detection
+that's already in (that part only decides *how a crossing renders*, it
+doesn't let you convert a crossing into a real 3-way branch point); no
+persistent object grouping or locking; no minimap; and routing avoids
+nothing — a connector routes between its two anchor points, it doesn't
+yet detour *around* a third piece of equipment sitting in the way. All of
+these are real follow-up work, not corners intentionally cut for the demo.
 
 **Admin (`admin.html`)**
 

@@ -813,7 +813,21 @@ class PlantBuilderApp {
       items.push({ label: "Bring to Front", action: () => this.bringToFront(type, id) });
       items.push({ label: "Send to Back", action: () => this.sendToBack(type, id) });
     } else if (type === "connector") {
+      const conn = this.connectors.get(id);
+      const clickWorld = this.clientToWorld(clientX, clientY);
       items.push({ label: "Reverse Direction", action: () => this.reverseConnector(id) });
+      items.push({ label: conn?.label ? "Edit Label" : "Add Label", action: () => this.editConnectorLabel(conn) });
+      items.push({
+        label: "Add Waypoint",
+        action: () => {
+          const from = this.getBox(conn.from);
+          const to = this.getBox(conn.to);
+          if (from && to) this.addWaypointAt(conn, from, to, clickWorld);
+        },
+      });
+      if (conn?.routing?.mode === "manual") {
+        items.push({ label: "Reset Route", action: () => this.resetConnectorRoute(conn) });
+      }
       items.push({ separator: true });
       items.push({ label: "Delete", action: () => this.deleteSelection() });
     } else {
@@ -1360,6 +1374,8 @@ class PlantBuilderApp {
       from: fromId,
       to: toId,
       style: { arrowStart: false, arrowEnd: true, lineType: "solid" },
+      routing: { mode: "auto", points: [] },
+      label: null,
     });
     this.selectOne("connector", id);
     this.render();
@@ -1372,13 +1388,20 @@ class PlantBuilderApp {
 
   // ---------- Orthogonal connector routing ----------
   //
-  // "Auto" routing (the only mode implemented so far -- manual waypoint
-  // editing is a follow-up pass): pick the exit/entry side on each box
-  // from the sign of dx/dy between their centers, then connect those two
-  // anchor points with a Manhattan path -- a straight run when the anchors
-  // already line up, otherwise a single Z-bend through the midpoint. This
-  // is recomputed from current box positions on every render, so moving
-  // either end reroutes automatically without any stored path to go stale.
+  // Two routing modes per connector (conn.routing.mode):
+  //   "auto"   -- pick the exit/entry side on each box from the sign of
+  //               dx/dy between their centers, connect with a Manhattan
+  //               path (straight if the anchors line up, one Z-bend
+  //               through the midpoint otherwise). Recomputed from live
+  //               box positions every render, so moving either end
+  //               reroutes automatically -- nothing to go stale.
+  //   "manual" -- conn.routing.points is the actual path (world coords,
+  //               grid-snapped), set once a user drags a segment or adds
+  //               a waypoint. The two ends still track their boxes (the
+  //               first/last point are overwritten with the current
+  //               anchor each render); everything in between is exactly
+  //               what the user shaped. "Reset Route" clears it back to
+  //               "auto".
 
   anchorPoint(box, side) {
     const cx = box.x + box.width / 2;
@@ -1391,17 +1414,23 @@ class PlantBuilderApp {
     }
   }
 
-  computeOrthogonalPath(a, b) {
+  bestAnchorSides(a, b) {
     const aCenter = this.nodeCenter(a);
     const bCenter = this.nodeCenter(b);
     const dx = bCenter.x - aCenter.x;
     const dy = bCenter.y - aCenter.y;
     const horizontal = Math.abs(dx) >= Math.abs(dy);
+    return {
+      aSide: horizontal ? (dx >= 0 ? "e" : "w") : (dy >= 0 ? "s" : "n"),
+      bSide: horizontal ? (dx >= 0 ? "w" : "e") : (dy >= 0 ? "n" : "s"),
+    };
+  }
 
-    const aSide = horizontal ? (dx >= 0 ? "e" : "w") : (dy >= 0 ? "s" : "n");
-    const bSide = horizontal ? (dx >= 0 ? "w" : "e") : (dy >= 0 ? "n" : "s");
+  computeOrthogonalPath(a, b) {
+    const { aSide, bSide } = this.bestAnchorSides(a, b);
     const p1 = this.anchorPoint(a, aSide);
     const p2 = this.anchorPoint(b, bSide);
+    const horizontal = aSide === "e" || aSide === "w";
 
     if (horizontal) {
       if (Math.abs(p1.y - p2.y) < 0.5) return [p1, p2];
@@ -1413,13 +1442,161 @@ class PlantBuilderApp {
     return [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2];
   }
 
-  // Renders a polyline as an SVG path with small rounded corners at each
-  // interior bend (draw.io-style), rather than sharp right angles.
-  pointsToRoundedPath(points, radius = 7) {
+  // The path actually used for rendering/interaction/crossing-detection:
+  // auto-computed, or the user's manual points with the two ends snapped
+  // to wherever the connected boxes currently are.
+  getConnectorPoints(conn, from, to) {
+    if (conn.routing && conn.routing.mode === "manual" && conn.routing.points.length >= 2) {
+      const pts = conn.routing.points.map((p) => ({ ...p }));
+      const { aSide, bSide } = this.bestAnchorSides(from, to);
+      pts[0] = this.anchorPoint(from, aSide);
+      pts[pts.length - 1] = this.anchorPoint(to, bSide);
+      return pts;
+    }
+    return this.computeOrthogonalPath(from, to);
+  }
+
+  // Freezes the connector's current points into routing.points (a fresh
+  // array, never shared with a past undo snapshot) and flips it into
+  // manual mode -- the entry point for both segment-dragging and
+  // waypoint-adding.
+  commitManualRoute(conn, points) {
+    conn.routing = { mode: "manual", points: points.map((p) => ({ ...p })) };
+  }
+
+  resetConnectorRoute(conn) {
+    conn.routing = { mode: "auto", points: [] };
+    this.render();
+    this.pushHistory();
+  }
+
+  // Splices a new bend into the path via the clicked world point: finds
+  // the nearest existing segment, then connects to the click point with
+  // an orthogonal one-bend detour on either side (skipped where already
+  // aligned), same geometry as the auto-router uses.
+  addWaypointAt(conn, from, to, clickPoint) {
+    const points = this.getConnectorPoints(conn, from, to);
+    let bestIndex = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < points.length - 1; i++) {
+      const d = distanceToSegment(clickPoint, points[i], points[i + 1]);
+      if (d < bestDist) { bestDist = d; bestIndex = i; }
+    }
+    const via = { x: snapToGrid(clickPoint.x), y: snapToGrid(clickPoint.y) };
+    const before = orthogonalBendVia(points[bestIndex], via);
+    const after = orthogonalBendVia(via, points[bestIndex + 1]);
+    const newPoints = [
+      ...points.slice(0, bestIndex + 1),
+      ...before,
+      via,
+      ...after,
+      ...points.slice(bestIndex + 1),
+    ];
+    this.commitManualRoute(conn, newPoints);
+    this.render();
+    this.pushHistory();
+  }
+
+  // Draggable grip at the midpoint of an interior segment (neither end an
+  // anchor) -- dragging it perpendicular to the segment shifts that
+  // segment's shared coordinate, exactly like draw.io's segment editing:
+  // the rest of the route stays put because only the two points bounding
+  // that one segment move.
+  startSegmentDrag(e, conn, from, to, segIndex) {
+    e.stopPropagation();
+    e.preventDefault();
+    this.selectOne("connector", conn.id);
+
+    const points = this.getConnectorPoints(conn, from, to);
+    this.commitManualRoute(conn, points);
+    const pts = conn.routing.points;
+    const vertical = Math.abs(pts[segIndex].x - pts[segIndex + 1].x) < 0.5;
+
+    const onMove = (ev) => {
+      const world = this.clientToWorld(ev.clientX, ev.clientY);
+      const raw = vertical ? world.x : world.y;
+      const snapped = ev.altKey ? raw : snapToGrid(raw);
+      if (vertical) { pts[segIndex].x = snapped; pts[segIndex + 1].x = snapped; }
+      else { pts[segIndex].y = snapped; pts[segIndex + 1].y = snapped; }
+      this.renderConnectors();
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // ---------- Crossing detection (junction vs. crossing) ----------
+  //
+  // Two connectors that don't share an equipment/shape endpoint but whose
+  // paths intersect are a "crossing", not a "junction" -- distinguishing
+  // the two matters enough to technical diagrams that the spec calls it
+  // out by name. Every crossing gets a small arc bridge on one of the two
+  // lines (deterministically the later-created one) so it reads as one
+  // line hopping over the other rather than an ambiguous four-way meet.
+  computeCrossingBridges(pathsById) {
+    const bridges = new Map();
+    const ids = Array.from(pathsById.keys());
+    for (let i = 0; i < ids.length; i++) {
+      const connA = this.connectors.get(ids[i]);
+      if (!connA) continue;
+      for (let j = i + 1; j < ids.length; j++) {
+        const connB = this.connectors.get(ids[j]);
+        if (!connB) continue;
+        const sharesEndpoint = [connA.from, connA.to].some((x) => x === connB.from || x === connB.to);
+        if (sharesEndpoint) continue;
+
+        const ptsA = pathsById.get(ids[i]);
+        const ptsB = pathsById.get(ids[j]);
+        for (let a = 0; a < ptsA.length - 1; a++) {
+          for (let b = 0; b < ptsB.length - 1; b++) {
+            const hit = segmentIntersection(ptsA[a], ptsA[a + 1], ptsB[b], ptsB[b + 1]);
+            if (hit) {
+              if (!bridges.has(ids[j])) bridges.set(ids[j], []);
+              bridges.get(ids[j]).push(hit);
+            }
+          }
+        }
+      }
+    }
+    return bridges;
+  }
+
+  // Renders a polyline as an SVG path: small rounded corners at each
+  // interior bend (draw.io-style, not sharp right angles), plus a small
+  // arc "hop" at any point in bridgePoints so crossing connectors never
+  // look like they're joined.
+  pointsToRoundedPath(points, bridgePoints = [], radius = 7, bump = 6) {
     if (points.length < 2) return "";
-    if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+
+    const straightTo = (from, to) => {
+      const onSeg = bridgePoints
+        .map((bp) => ({ bp, t: segmentParam(from, to, bp) }))
+        .filter((x) => x.t !== null)
+        .sort((x, y) => x.t - y.t);
+      if (onSeg.length === 0) return ` L ${to.x} ${to.y}`;
+      const vertical = Math.abs(from.x - to.x) < 0.5;
+      const dir = vertical ? Math.sign(to.y - from.y) : Math.sign(to.x - from.x);
+      const sweep = dir > 0 ? 1 : 0;
+      let d = "";
+      for (const { bp } of onSeg) {
+        const before = vertical ? { x: from.x, y: bp.y - dir * bump } : { x: bp.x - dir * bump, y: from.y };
+        const after = vertical ? { x: from.x, y: bp.y + dir * bump } : { x: bp.x + dir * bump, y: from.y };
+        d += ` L ${before.x} ${before.y} A ${bump} ${bump} 0 0 ${sweep} ${after.x} ${after.y}`;
+      }
+      d += ` L ${to.x} ${to.y}`;
+      return d;
+    };
+
+    if (points.length === 2) {
+      return `M ${points[0].x} ${points[0].y}${straightTo(points[0], points[1])}`;
+    }
 
     let d = `M ${points[0].x} ${points[0].y}`;
+    let penPoint = points[0];
     for (let i = 1; i < points.length - 1; i++) {
       const prev = points[i - 1];
       const curr = points[i];
@@ -1427,15 +1604,50 @@ class PlantBuilderApp {
       const len1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
       const len2 = Math.hypot(next.x - curr.x, next.y - curr.y);
       const r = Math.min(radius, len1 / 2, len2 / 2);
-      const inX = len1 > 0 ? curr.x - ((curr.x - prev.x) / len1) * r : curr.x;
-      const inY = len1 > 0 ? curr.y - ((curr.y - prev.y) / len1) * r : curr.y;
-      const outX = len2 > 0 ? curr.x + ((next.x - curr.x) / len2) * r : curr.x;
-      const outY = len2 > 0 ? curr.y + ((next.y - curr.y) / len2) * r : curr.y;
-      d += ` L ${inX} ${inY} Q ${curr.x} ${curr.y} ${outX} ${outY}`;
+      const inPoint = len1 > 0
+        ? { x: curr.x - ((curr.x - prev.x) / len1) * r, y: curr.y - ((curr.y - prev.y) / len1) * r }
+        : curr;
+      const outPoint = len2 > 0
+        ? { x: curr.x + ((next.x - curr.x) / len2) * r, y: curr.y + ((next.y - curr.y) / len2) * r }
+        : curr;
+      d += straightTo(penPoint, inPoint);
+      d += ` Q ${curr.x} ${curr.y} ${outPoint.x} ${outPoint.y}`;
+      penPoint = outPoint;
     }
     const last = points[points.length - 1];
-    d += ` L ${last.x} ${last.y}`;
+    d += straightTo(penPoint, last);
     return d;
+  }
+
+  pathMidpoint(points) {
+    let total = 0;
+    const lens = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const len = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+      lens.push(len);
+      total += len;
+    }
+    let target = total / 2;
+    for (let i = 0; i < lens.length; i++) {
+      if (target <= lens[i] || i === lens.length - 1) {
+        const t = lens[i] > 0 ? target / lens[i] : 0;
+        return {
+          x: points[i].x + (points[i + 1].x - points[i].x) * t,
+          y: points[i].y + (points[i + 1].y - points[i].y) * t,
+        };
+      }
+      target -= lens[i];
+    }
+    return points[0];
+  }
+
+  editConnectorLabel(conn) {
+    this.openModal("Connector label", "Save", (value) => {
+      conn.label = value || null;
+      this.render();
+      this.pushHistory();
+    });
+    this.els.modalInput.value = conn.label || "";
   }
 
   renderConnectors() {
@@ -1450,16 +1662,27 @@ class PlantBuilderApp {
         </marker>
       </defs>`;
 
-    for (const conn of this.connectors.values()) {
+    const pathsById = new Map();
+    const boxesById = new Map();
+    for (const [id, conn] of this.connectors) {
       const from = this.getBox(conn.from);
       const to = this.getBox(conn.to);
       if (!from || !to) continue;
+      boxesById.set(id, { from, to });
+      pathsById.set(id, this.getConnectorPoints(conn, from, to));
+    }
+    const bridgesById = this.computeCrossingBridges(pathsById);
 
-      const points = this.computeOrthogonalPath(from, to);
+    for (const [id, conn] of this.connectors) {
+      const boxes = boxesById.get(id);
+      if (!boxes) continue;
+      const { from, to } = boxes;
+      const points = pathsById.get(id);
       const style = conn.style || { arrowEnd: true };
+      const bridgePoints = bridgesById.get(id) || [];
 
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", this.pointsToRoundedPath(points));
+      path.setAttribute("d", this.pointsToRoundedPath(points, bridgePoints));
       path.setAttribute("class", "connector-line");
       if (style.arrowEnd !== false) path.setAttribute("marker-end", "url(#arrowhead)");
       if (style.arrowStart) path.setAttribute("marker-start", "url(#arrowhead-start)");
@@ -1470,8 +1693,57 @@ class PlantBuilderApp {
         if (e.shiftKey) this.toggleSelection("connector", conn.id);
         else this.selectOne("connector", conn.id);
       });
+      path.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        this.editConnectorLabel(conn);
+      });
       path.addEventListener("contextmenu", (e) => this.onContextMenu(e, "connector", conn.id));
       svg.appendChild(path);
+
+      if (conn.label) {
+        const mid = this.pathMidpoint(points);
+        const textWidth = Math.max(24, conn.label.length * 6.2);
+        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bg.setAttribute("class", "connector-label-bg");
+        bg.setAttribute("x", mid.x - textWidth / 2 - 4);
+        bg.setAttribute("y", mid.y - 10);
+        bg.setAttribute("width", textWidth + 8);
+        bg.setAttribute("height", 18);
+        svg.appendChild(bg);
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("class", "connector-label");
+        text.setAttribute("x", mid.x);
+        text.setAttribute("y", mid.y + 4);
+        text.setAttribute("text-anchor", "middle");
+        text.textContent = conn.label;
+        text.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          this.editConnectorLabel(conn);
+        });
+        svg.appendChild(text);
+      }
+
+      // Segment-drag grips: only shown on the selected connector, one per
+      // interior segment (both endpoints interior bends, not the boxes'
+      // fixed anchor points) -- exactly the segments draw.io lets you
+      // grab and slide.
+      if (this.selection.length === 1 && this.selection[0].type === "connector" && this.selection[0].id === conn.id) {
+        for (let i = 1; i < points.length - 2; i++) {
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          const mx = (p1.x + p2.x) / 2;
+          const my = (p1.y + p2.y) / 2;
+          const vertical = Math.abs(p1.x - p2.x) < 0.5;
+          const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          handle.setAttribute("class", `segment-handle ${vertical ? "segment-handle-v" : "segment-handle-h"}`);
+          handle.setAttribute("x", mx - (vertical ? 5 : 8));
+          handle.setAttribute("y", my - (vertical ? 8 : 5));
+          handle.setAttribute("width", vertical ? 10 : 16);
+          handle.setAttribute("height", vertical ? 16 : 10);
+          handle.addEventListener("mousedown", (e) => this.startSegmentDrag(e, conn, from, to, i));
+          svg.appendChild(handle);
+        }
+      }
     }
     this.renderFreeLines();
     this.renderSelectionHighlight();
@@ -1787,7 +2059,12 @@ class PlantBuilderApp {
       });
     }
     for (const c of layout.connectors) {
-      this.connectors.set(c.id, { style: { arrowStart: false, arrowEnd: true, lineType: "solid" }, ...c });
+      this.connectors.set(c.id, {
+        style: { arrowStart: false, arrowEnd: true, lineType: "solid" },
+        routing: { mode: "auto", points: [] },
+        label: null,
+        ...c,
+      });
     }
     for (const s of layout.shapes || []) this.shapes.set(s.id, s);
     for (const l of layout.lines || []) this.lines.set(l.id, l);
@@ -1973,6 +2250,66 @@ function average(values) {
 
 function boxIntersectsRect(box, minX, minY, maxX, maxY) {
   return box.x < maxX && box.x + box.width > minX && box.y < maxY && box.y + box.height > minY;
+}
+
+// ---------- Connector routing geometry ----------
+// All connector segments are axis-aligned (horizontal or vertical), which
+// keeps intersection/distance math simple -- no general line-line algebra
+// needed anywhere here.
+
+function distanceToSegment(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq)) : 0;
+  const px = a.x + t * dx;
+  const py = a.y + t * dy;
+  return Math.hypot(p.x - px, p.y - py);
+}
+
+// Connects two points with at most one orthogonal bend, skipped entirely
+// when they already share an x or y (a straight run needs no bend).
+function orthogonalBendVia(from, to) {
+  if (Math.abs(from.x - to.x) < 0.5 || Math.abs(from.y - to.y) < 0.5) return [];
+  return [{ x: to.x, y: from.y }];
+}
+
+// True axis-aligned intersection test: one segment must be vertical, the
+// other horizontal, and each must actually span the crossing point (not
+// just touch at an endpoint -- a shared endpoint is a junction, not a
+// crossing, and is filtered out by the caller before this ever runs).
+function segmentIntersection(p1, p2, p3, p4) {
+  const aVertical = Math.abs(p1.x - p2.x) < 0.5;
+  const bVertical = Math.abs(p3.x - p4.x) < 0.5;
+  if (aVertical === bVertical) return null;
+  const vertical = aVertical ? { p1, p2 } : { p1: p3, p2: p4 };
+  const horizontal = aVertical ? { p1: p3, p2: p4 } : { p1, p2 };
+  const x = vertical.p1.x;
+  const y = horizontal.p1.y;
+  const vyMin = Math.min(vertical.p1.y, vertical.p2.y);
+  const vyMax = Math.max(vertical.p1.y, vertical.p2.y);
+  const hxMin = Math.min(horizontal.p1.x, horizontal.p2.x);
+  const hxMax = Math.max(horizontal.p1.x, horizontal.p2.x);
+  const margin = 1;
+  if (y > vyMin + margin && y < vyMax - margin && x > hxMin + margin && x < hxMax - margin) {
+    return { x, y };
+  }
+  return null;
+}
+
+// Fractional distance of point bp along segment p1->p2, or null if bp
+// isn't (approximately) on that segment -- used to place bridge arcs on
+// the right straight run while building a connector's path string.
+function segmentParam(p1, p2, bp) {
+  const vertical = Math.abs(p1.x - p2.x) < 0.5;
+  if (vertical) {
+    if (Math.abs(bp.x - p1.x) > 1) return null;
+    const t = (bp.y - p1.y) / (p2.y - p1.y);
+    return t > 0.02 && t < 0.98 ? t : null;
+  }
+  if (Math.abs(bp.y - p1.y) > 1) return null;
+  const t = (bp.x - p1.x) / (p2.x - p1.x);
+  return t > 0.02 && t < 0.98 ? t : null;
 }
 
 function escapeHtml(str) {

@@ -377,6 +377,37 @@ body {
 .connector-line.selected { stroke: var(--brand-accent); stroke-width: 3.5; }
 .connector-line-temp { stroke: var(--brand-accent); stroke-dasharray: 6 4; pointer-events: none; }
 
+/* Segment-drag grips: shown only on the selected connector's interior
+   segments (not the two ends anchored to equipment). Cursor direction is
+   the opposite of the segment's own orientation -- dragging a vertical
+   segment moves it horizontally, and vice versa. */
+.segment-handle {
+  fill: #fff;
+  stroke: var(--brand-accent);
+  stroke-width: 1.5;
+  rx: 2;
+  pointer-events: all;
+}
+.segment-handle-v { cursor: ew-resize; }
+.segment-handle-h { cursor: ns-resize; }
+.segment-handle:hover { fill: var(--brand-accent); }
+
+.connector-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+  pointer-events: none;
+  user-select: none;
+}
+.connector-label-bg {
+  fill: #fff;
+  stroke: var(--border);
+  stroke-width: 1;
+  rx: 3;
+  pointer-events: all;
+  cursor: pointer;
+}
+
 .guide-layer { z-index: 2; }
 .align-guide {
   stroke: #ff4d6d;
