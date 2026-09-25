@@ -12,9 +12,12 @@ Keep it that way — see "Constraints" below.
 
 ## Current state
 
-The equipment catalog now has a real backend: a small Express API backs a
-central catalog with an admin UI for managing listings (including image
-uploads), and the sales-facing builder reads from it live. Saved *layouts*
+The equipment catalog has a real backend on SQLite: a small Express API
+backs a central catalog with an admin UI for managing listings (including
+image uploads), and the sales-facing builder reads from it live. A real
+per-user account system (users, roles, sessions, invitations) also exists
+now, tested end-to-end — but nothing in the app's UI uses it yet; see
+"Accounts & authentication" for exactly what that means. Saved *layouts*
 (what a rep draws) are still browser `localStorage` only — that's the next
 piece of real persistence to build; see "What needs to be built next".
 
@@ -219,8 +222,10 @@ image is uploaded for that item.
 server/
   server.js       — Express app: static hosting + REST API + uploads
   database.js     — shared SQLite connection (one DB file for the app;
-                    future tables — users, plant projects — go here too)
+                    future tables — e.g. plant projects — go here too)
   db.js           — equipment-catalog CRUD, on the shared connection
+  auth.js         — users/roles/sessions/invitations, on the shared
+                    connection (see "Accounts & authentication" below)
   seed-data.js    — real 77-product catalog loaded into a fresh database
   data/           — plantbuilder.db lives here (gitignored)
   uploads/        — uploaded product images (gitignored)
@@ -260,19 +265,19 @@ a confusing one.
 
 **Why now, and why this way:** saved plant *layouts* (Phase 2d/2e, not
 yet built) need real ownership — a `plant_projects` table with an
-`ownerId` foreign key to a future `users` table. That's not a sensible
+`ownerId` foreign key to the `users` table below. That's not a sensible
 thing to bolt onto a JSON array; it needs an actual relational store.
-Moving the catalog first, on its own, keeps this change small and
-independently testable before anything depends on it.
+Moving the catalog first, on its own, kept that change small and
+independently testable before anything depended on it.
 
 **One connection, one file, split for what's coming.**
 `server/database.js` owns the single `DatabaseSync` connection and the
-one `.db` file; `server/db.js` (equipment) creates its own table on that
-shared connection via `CREATE TABLE IF NOT EXISTS` and exports the exact
-same `list/get/create/update/remove` functions it always had — `server.js`
-needed no changes for this migration. When Phase 2b/2d add `users` and
-`plant_projects`, they'll each be a new file doing the same thing on the
-same connection, not a second database to reconcile.
+one `.db` file; each data-access file (`db.js` for equipment, `auth.js`
+for users/sessions, a future `plant-projects.js`) creates its own
+table(s) on that shared connection via `CREATE TABLE IF NOT EXISTS`.
+`db.js` exports the exact same `list/get/create/update/remove` functions
+it always had — `server.js` needed no equipment-route changes for this
+migration.
 
 **Upgrading an existing (JSON-file) deployment:** fully automatic and
 non-destructive. On first run, if `equipment.db` is empty and an old
@@ -293,6 +298,86 @@ migration/seed logic from scratch.
 JSON→SQLite migration path with real records, and the complete existing
 Playwright regression suite (canvas, connectors, drag-and-drop, admin) —
 all passing against the new backend with no behavior change.
+
+## Accounts & authentication
+
+A real per-user account system (`server/auth.js`), on the same SQLite
+database as the equipment catalog — `users` and `sessions` tables, no
+second database. This is the backend only: **nothing in the app's UI
+uses it yet.** `admin.html` and the equipment write routes still run on
+the original shared-password HTTP Basic Auth gate from before (see
+"Protecting the admin page" above), untouched. Wiring real accounts into
+that page, and building any login/setup screens, is UI work — deliberately
+left for the phase that covers it (a Users admin page) rather than built
+ahead of schedule here. Everything below is real and tested, just via
+direct API calls rather than through a browser UI so far.
+
+**Model:**
+```
+users:    id, firstName, lastName, email (unique), passwordHash,
+          role (admin | manager | staff), status (invited | active |
+          inactive), invitationTokenHash, invitationExpiresAt,
+          createdAt, updatedAt, lastLoginAt
+sessions: id (a hash of the session token — not the raw token, so
+          reading the table doesn't hand out a working login),
+          userId, createdAt, expiresAt
+```
+`role` and `status` are plain text validated in application code, not a
+database enum — adding a role later is a one-line change, not a schema
+migration.
+
+**Passwords:** Node's built-in `crypto.scrypt` (a standard, OWASP-listed
+password-hashing KDF, already in Node core) — no new dependency. Never
+stored or returned in plain text; API responses never include the hash.
+
+**Sessions:** an opaque random token in an `httpOnly`, `SameSite=Lax`
+cookie (`Secure` when `NODE_ENV=production`), hashed before being stored
+and looked up. 30-day expiry. A deactivated user's *existing* session
+stops working on the very next request, not just at its next login —
+status is re-checked on every authenticated call, not cached.
+
+**Invitations:** `POST /api/users` (admin-only) creates an account in
+`invited` status with a hashed, 7-day-expiry token, and returns a link
+the admin copies and sends manually — per this phase's explicit scope,
+no transactional email is wired up yet. The invitee's own
+`GET/POST /api/auth/invitation/:token` calls don't require being logged
+in already, for the obvious reason.
+
+**Bootstrap admin:** since admins are normally created by admins, the
+first one can't be — if the `users` table is empty on startup, the
+server creates one automatically. Set `BOOTSTRAP_ADMIN_EMAIL` and
+`BOOTSTRAP_ADMIN_PASSWORD` to choose the credentials; leave them unset
+and the server generates a random password and prints it to the console
+once, on that first run only (log in and change it via
+`POST /api/auth/change-password`).
+
+**Routes:**
+```
+POST   /api/auth/login                        — email + password -> session cookie
+POST   /api/auth/logout                       — invalidates the session
+GET    /api/auth/me                            — current user (401 if not logged in)
+POST   /api/auth/change-password               — requires auth
+GET    /api/auth/invitation/:token             — public; who is this invite for
+POST   /api/auth/invitation/:token/accept      — public; sets password, activates, logs in
+GET    /api/users                              — admin-only; list all users
+POST   /api/users                              — admin-only; invite a user
+PATCH  /api/users/:id                          — admin-only; change role/status
+```
+The last two, plus `/api/users`, reject non-admins with 403 — enforced
+server-side in `requireRole`, not by hiding a button. Deactivating or
+demoting the last active admin is also rejected, so the system can't
+lock everyone out.
+
+**Tested:** a 26-point API test covering the full lifecycle — bootstrap
+login, wrong-password rejection, inviting a user, an invited (not yet
+active) account failing to log in, accepting the invitation, logging in
+with the new password, a staff account being rejected from both
+admin-only endpoints, listing users with no password/token hashes ever
+exposed, deactivation revoking an already-open session immediately (not
+just blocking future logins), the last-admin guard, and password change
+invalidating the old password — all 26 passing. The full pre-existing
+Playwright regression suite (canvas, connectors, equipment admin) was
+also re-run and is unaffected, since none of that code was touched.
 
 ## Deploying (Railway)
 
@@ -326,13 +411,14 @@ workstreams (AI plant input, advanced canvas/drawing, staff backend) — see
 the session's task list for the current sequence and status. The
 near-term backend pieces:
 
-1. **User accounts, roles, and self-hosted auth** (Phase 2b) — on the
-   SQLite database above; the admin page's HTTP Basic Auth gate is a
-   stand-in, not the real per-rep account system.
-2. **Plant project persistence + ownership** (Phase 2d/2e) — layouts
+1. **Plant project persistence + ownership** (Phase 2d/2e) — layouts
    still live in `localStorage` only; moving them server-side with real
-   ownership (tied to the accounts above) is the next piece, same shape
-   as the equipment catalog work just done.
+   ownership (tied to the accounts in "Accounts & authentication" above)
+   is the next piece, same shape as the equipment catalog work already
+   done.
+2. **Login/invitation-setup UI and switching admin.html over to real
+   accounts** (Phase 6a) — the account system above is a tested backend
+   only; no page in the app uses it yet, by design (see that section).
 
 ## Constraints that should not change without a conversation
 

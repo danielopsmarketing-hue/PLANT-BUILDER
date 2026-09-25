@@ -5,6 +5,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const db = require("./db");
+const auth = require("./auth");
 const { CATEGORIES } = require("./seed-data");
 
 const PORT = process.env.PORT || 4000;
@@ -96,6 +97,79 @@ app.get("/api/categories", (req, res) => {
   res.json(CATEGORIES);
 });
 
+// ---------- Auth ----------
+//
+// Independent of the admin.html/equipment Basic Auth gate above -- that
+// stays as-is for now (see requireAdminAuth). This is the real per-user
+// system (Phase 2b): not yet wired into any route as the enforcement
+// mechanism, deliberately -- flipping equipment admin over to it, and
+// building the login/invitation-setup UI, is follow-up work (Phase 6a)
+// so it isn't done ahead of schedule here. What's below is proven via
+// direct API calls instead.
+
+app.post("/api/auth/login", (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: "email and password are required" });
+  const user = auth.verifyLogin(email, password);
+  if (!user) return res.status(401).json({ error: "Invalid email or password" });
+  const token = auth.createSession(user.id);
+  auth.setSessionCookie(res, token);
+  res.json(auth.toSafeUser(auth.findUserById(user.id)));
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const cookies = auth.parseCookies(req);
+  auth.deleteSession(cookies[auth.SESSION_COOKIE]);
+  auth.clearSessionCookie(res);
+  res.status(204).end();
+});
+
+app.get("/api/auth/me", auth.requireAuth, (req, res) => {
+  res.json(auth.toSafeUser(req.user));
+});
+
+app.post("/api/auth/change-password", auth.requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  auth.changePassword(req.user.id, currentPassword, newPassword);
+  res.status(204).end();
+});
+
+// Public: an invitee isn't logged in yet, so these can't sit behind requireAuth.
+app.get("/api/auth/invitation/:token", (req, res) => {
+  const user = auth.getInvitation(req.params.token);
+  if (!user) return res.status(404).json({ error: "This invitation link is invalid or has expired" });
+  res.json({ firstName: user.firstName, lastName: user.lastName, email: user.email });
+});
+
+app.post("/api/auth/invitation/:token/accept", (req, res) => {
+  const { password } = req.body || {};
+  const user = auth.acceptInvitation(req.params.token, password);
+  const token = auth.createSession(user.id);
+  auth.setSessionCookie(res, token);
+  res.json(auth.toSafeUser(user));
+});
+
+// ---------- Users (admin-only) ----------
+
+app.get("/api/users", auth.requireAuth, auth.requireRole("admin"), (req, res) => {
+  res.json(auth.listUsers());
+});
+
+app.post("/api/users", auth.requireAuth, auth.requireRole("admin"), (req, res) => {
+  const { firstName, lastName, email, role } = req.body || {};
+  const { user, rawInvitationToken } = auth.inviteUser({ firstName, lastName, email, role });
+  res.status(201).json({
+    user: auth.toSafeUser(user),
+    invitationLink: `/api/auth/invitation/${rawInvitationToken}`,
+  });
+});
+
+app.patch("/api/users/:id", auth.requireAuth, auth.requireRole("admin"), (req, res) => {
+  const { role, status } = req.body || {};
+  const user = auth.updateUser(req.params.id, { role, status });
+  res.json(auth.toSafeUser(user));
+});
+
 // ---------- Equipment ----------
 
 app.get("/api/equipment", (req, res) => {
@@ -168,7 +242,7 @@ app.delete("/api/equipment/:id", requireAdminAuth, (req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(400).json({ error: err.message || "Unexpected error" });
+  res.status(err.status || 400).json({ error: err.message || "Unexpected error" });
 });
 
 app.listen(PORT, () => {
