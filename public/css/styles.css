@@ -374,7 +374,9 @@ body {
   pointer-events: stroke;
   cursor: pointer;
 }
-.connector-line.selected { stroke: var(--brand-accent); stroke-width: 3.5; }
+/* Selection is a glow, not a stroke/color override, so a custom line
+   color/width (Phase 3a style panel) stays visible while selected. */
+.connector-line.selected { filter: drop-shadow(0 0 0 1px var(--brand-accent)) drop-shadow(0 0 3px var(--brand-accent)); }
 .connector-line-temp { stroke: var(--brand-accent); stroke-dasharray: 6 4; pointer-events: none; }
 
 /* Segment-drag grips: shown only on the selected connector's interior
@@ -569,8 +571,7 @@ body {
   overflow: hidden;
 }
 
-.free-line { stroke: #374151; }
-.free-line.selected { stroke: var(--brand-accent); stroke-width: 3.5; }
+.free-line.selected { filter: drop-shadow(0 0 0 1px var(--brand-accent)) drop-shadow(0 0 3px var(--brand-accent)); }
 
 .line-handle {
   fill: #fff;
@@ -676,6 +677,54 @@ button.danger:hover { background: #fef2f2; }
   margin-bottom: 8px;
 }
 .inspector-secondary-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+
+.style-panel {
+  margin: 4px 0 14px;
+  padding: 10px;
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.style-panel-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.style-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.style-row:last-child { margin-bottom: 0; }
+.style-row select {
+  flex: 1;
+  padding: 5px 6px;
+  font-size: 12.5px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fff;
+}
+.style-swatches { flex-wrap: wrap; }
+.style-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.style-swatch.active { border-color: var(--text); box-shadow: 0 0 0 1px #fff inset; }
+#style-color-custom {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  background: none;
+}
+.style-row-arrows { justify-content: space-between; }
+.style-row-arrows label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); cursor: pointer; }
 
 .align-toolbar { margin: 4px 0 14px; }
 .align-toolbar-label {

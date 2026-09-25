@@ -22,6 +22,16 @@ const LINE_DEFAULT_LENGTH = 140;
 const GRID_SIZE = 24; // matches the visual canvas background grid
 const MAGNET_RADIUS = 14; // how close a line endpoint must be to a box edge to snap
 
+// ---------- Line/connector style system (Phase 3a) ----------
+const DEFAULT_STROKE_COLOR = "#374151";
+const STYLE_COLOR_PRESETS = ["#374151", "#dc2626", "#2563eb", "#059669", "#d97706", "#7c3aed"];
+const STROKE_WIDTHS = { thin: 1.5, medium: 2.5, thick: 4 };
+const DASH_PATTERNS = { solid: null, dashed: "8 5", dotted: "2 4" };
+
+function defaultLineStyle() {
+  return { strokeColor: DEFAULT_STROKE_COLOR, strokeWidth: STROKE_WIDTHS.medium, lineType: "solid", arrowStart: false, arrowEnd: true };
+}
+
 class PlantBuilderApp {
   constructor() {
     this.categories = [];
@@ -866,6 +876,71 @@ class PlantBuilderApp {
     this.els.contextMenu.classList.add("hidden");
   }
 
+  // ---------- Style panel (Phase 3a) ----------
+  //
+  // Shared by the single-connector, single-line, and multi-select
+  // inspector views. `getStyle` reads the current (merged-with-defaults)
+  // style to seed the controls; `apply(partial)` is called with just the
+  // changed fields so a multi-select caller can fan a single edit out to
+  // every selected connector/line without each one clobbering the others'
+  // untouched properties.
+  buildStylePanelHtml(style) {
+    const widthKey = Object.entries(STROKE_WIDTHS).find(([, v]) => v === style.strokeWidth)?.[0] || "medium";
+    const safeColor = /^#[0-9a-f]{6}$/i.test(style.strokeColor) ? style.strokeColor : DEFAULT_STROKE_COLOR;
+    const swatches = STYLE_COLOR_PRESETS.map(
+      (c) => `<button type="button" class="style-swatch${c === safeColor ? " active" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+    ).join("");
+    return `
+      <div class="style-panel">
+        <div class="style-panel-label">Style</div>
+        <div class="style-row style-swatches">
+          ${swatches}
+          <input type="color" id="style-color-custom" value="${safeColor}" title="Custom color" />
+        </div>
+        <div class="style-row">
+          <select id="style-width" title="Thickness">
+            <option value="thin"${widthKey === "thin" ? " selected" : ""}>Thin</option>
+            <option value="medium"${widthKey === "medium" ? " selected" : ""}>Medium</option>
+            <option value="thick"${widthKey === "thick" ? " selected" : ""}>Thick</option>
+          </select>
+          <select id="style-dash" title="Line style">
+            <option value="solid"${style.lineType === "solid" ? " selected" : ""}>Solid</option>
+            <option value="dashed"${style.lineType === "dashed" ? " selected" : ""}>Dashed</option>
+            <option value="dotted"${style.lineType === "dotted" ? " selected" : ""}>Dotted</option>
+          </select>
+        </div>
+        <div class="style-row style-row-arrows">
+          <label><input type="checkbox" id="style-arrow-start"${style.arrowStart ? " checked" : ""} /> Start arrow</label>
+          <label><input type="checkbox" id="style-arrow-end"${style.arrowEnd !== false ? " checked" : ""} /> End arrow</label>
+        </div>
+      </div>`;
+  }
+
+  bindStylePanel(container, apply) {
+    for (const btn of container.querySelectorAll(".style-swatch")) {
+      btn.addEventListener("click", () => {
+        for (const b of container.querySelectorAll(".style-swatch")) b.classList.toggle("active", b === btn);
+        apply({ strokeColor: btn.dataset.color });
+      });
+    }
+    container.querySelector("#style-color-custom").addEventListener("input", (e) => {
+      for (const b of container.querySelectorAll(".style-swatch")) b.classList.remove("active");
+      apply({ strokeColor: e.target.value });
+    });
+    container.querySelector("#style-width").addEventListener("change", (e) => {
+      apply({ strokeWidth: STROKE_WIDTHS[e.target.value] || STROKE_WIDTHS.medium });
+    });
+    container.querySelector("#style-dash").addEventListener("change", (e) => {
+      apply({ lineType: e.target.value });
+    });
+    container.querySelector("#style-arrow-start").addEventListener("change", (e) => {
+      apply({ arrowStart: e.target.checked });
+    });
+    container.querySelector("#style-arrow-end").addEventListener("change", (e) => {
+      apply({ arrowEnd: e.target.checked });
+    });
+  }
+
   renderInspector() {
     const content = this.els.inspectorContent;
     if (this.selection.length === 0) {
@@ -969,6 +1044,9 @@ class PlantBuilderApp {
       textarea.addEventListener("blur", () => this.pushHistory());
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     } else if (activeSelection.type === "line") {
+      const line = this.lines.get(activeSelection.id);
+      if (!line) return;
+      line.style = { ...defaultLineStyle(), ...(line.style || {}) };
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
@@ -977,12 +1055,19 @@ class PlantBuilderApp {
             <div class="inspector-model">Freeform annotation, not tied to equipment</div>
           </div>
         </div>
+        ${this.buildStylePanelHtml(line.style)}
         <button id="inspector-delete" class="danger">Delete line</button>
       `;
+      this.bindStylePanel(content, (partial) => {
+        line.style = { ...line.style, ...partial };
+        this.renderConnectors();
+        this.pushHistory();
+      });
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     } else {
       const conn = this.connectors.get(activeSelection.id);
       if (!conn) return;
+      conn.style = { ...defaultLineStyle(), ...(conn.style || {}) };
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
@@ -991,9 +1076,15 @@ class PlantBuilderApp {
             <div class="inspector-model">${escapeHtml(this.boxLabel(conn.from))} &rarr; ${escapeHtml(this.boxLabel(conn.to))}</div>
           </div>
         </div>
+        ${this.buildStylePanelHtml(conn.style)}
         <button id="inspector-reverse" class="inspector-secondary-btn">Reverse direction</button>
         <button id="inspector-delete" class="danger">Delete connector</button>
       `;
+      this.bindStylePanel(content, (partial) => {
+        conn.style = { ...conn.style, ...partial };
+        this.renderConnectors();
+        this.pushHistory();
+      });
       document.getElementById("inspector-reverse").addEventListener("click", () => this.reverseConnector(conn.id));
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     }
@@ -1007,12 +1098,23 @@ class PlantBuilderApp {
     const content = this.els.inspectorContent;
     const boxItems = this.selectedBoxes();
     const otherCount = this.selection.length - boxItems.length;
+
+    // Common-property editing: when every selected object is a
+    // connector/line, the style panel edits all of them at once (each
+    // change is fanned out to every selected item's own style object, so
+    // properties that already differ between them aren't clobbered).
+    const lineLikeItems = this.selection.filter((s) => s.type === "connector" || s.type === "line");
+    const allLineLike = lineLikeItems.length === this.selection.length && lineLikeItems.length >= 2;
+    const getLineLikeObj = (item) => (item.type === "line" ? this.lines.get(item.id) : this.connectors.get(item.id));
+    const seedStyle = allLineLike ? { ...defaultLineStyle(), ...(getLineLikeObj(lineLikeItems[0])?.style || {}) } : null;
+
     content.className = "";
     content.innerHTML = `
       <div class="inspector-name">${this.selection.length} objects selected</div>
       <div class="inspector-multi-hint">
         ${boxItems.length} equipment/shape${boxItems.length === 1 ? "" : "s"}${otherCount > 0 ? `, ${otherCount} connector/line${otherCount === 1 ? "" : "s"}` : ""}
       </div>
+      ${allLineLike ? this.buildStylePanelHtml(seedStyle) : ""}
       <div class="align-toolbar">
         <div class="align-toolbar-label">Align</div>
         <div class="align-toolbar-row">
@@ -1032,6 +1134,17 @@ class PlantBuilderApp {
       <button id="inspector-duplicate" class="inspector-secondary-btn">Duplicate (Ctrl+D)</button>
       <button id="inspector-delete" class="danger">Delete selection</button>
     `;
+    if (allLineLike) {
+      this.bindStylePanel(content, (partial) => {
+        for (const item of lineLikeItems) {
+          const obj = getLineLikeObj(item);
+          if (!obj) continue;
+          obj.style = { ...defaultLineStyle(), ...(obj.style || {}), ...partial };
+        }
+        this.renderConnectors();
+        this.pushHistory();
+      });
+    }
     for (const btn of content.querySelectorAll("[data-align]")) {
       btn.addEventListener("click", () => this.alignSelection(btn.dataset.align));
     }
@@ -1375,7 +1488,7 @@ class PlantBuilderApp {
       id,
       from: fromId,
       to: toId,
-      style: { arrowStart: false, arrowEnd: true, lineType: "solid" },
+      style: defaultLineStyle(),
       routing: { mode: "auto", points: [] },
       label: null,
     });
@@ -1652,17 +1765,31 @@ class PlantBuilderApp {
     this.els.modalInput.value = conn.label || "";
   }
 
+  // One pair of arrowhead markers per stroke color actually in use, so a
+  // custom-colored line's arrowhead matches it rather than always being
+  // the default dark gray. Cached per-render in this.els.svg's <defs>.
+  ensureMarkersForColor(defs, color) {
+    const safeId = color.replace(/[^a-z0-9]/gi, "");
+    const endId = `arrowhead-${safeId}`;
+    const startId = `arrowhead-start-${safeId}`;
+    if (!defs.querySelector(`#${endId}`)) {
+      defs.insertAdjacentHTML(
+        "beforeend",
+        `<marker id="${endId}" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+           <path d="M0,0 L8,4 L0,8 Z" fill="${color}"/>
+         </marker>
+         <marker id="${startId}" markerWidth="10" markerHeight="10" refX="2" refY="4" orient="auto">
+           <path d="M8,0 L0,4 L8,8 Z" fill="${color}"/>
+         </marker>`
+      );
+    }
+    return { endId, startId };
+  }
+
   renderConnectors() {
     const svg = this.els.svg;
-    svg.innerHTML = `
-      <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" fill="#374151"/>
-        </marker>
-        <marker id="arrowhead-start" markerWidth="10" markerHeight="10" refX="2" refY="4" orient="auto">
-          <path d="M8,0 L0,4 L8,8 Z" fill="#374151"/>
-        </marker>
-      </defs>`;
+    svg.innerHTML = `<defs></defs>`;
+    const defs = svg.querySelector("defs");
 
     const pathsById = new Map();
     const boxesById = new Map();
@@ -1680,15 +1807,20 @@ class PlantBuilderApp {
       if (!boxes) continue;
       const { from, to } = boxes;
       const points = pathsById.get(id);
-      const style = conn.style || { arrowEnd: true };
+      const style = { ...defaultLineStyle(), ...(conn.style || {}) };
       const bridgePoints = bridgesById.get(id) || [];
+      const isSelected = this.isSelected("connector", conn.id);
+      const { endId, startId } = this.ensureMarkersForColor(defs, style.strokeColor);
 
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", this.pointsToRoundedPath(points, bridgePoints));
       path.setAttribute("class", "connector-line");
-      if (style.arrowEnd !== false) path.setAttribute("marker-end", "url(#arrowhead)");
-      if (style.arrowStart) path.setAttribute("marker-start", "url(#arrowhead-start)");
-      if (style.lineType === "dashed") path.setAttribute("stroke-dasharray", "8 5");
+      path.style.stroke = style.strokeColor;
+      path.style.strokeWidth = String(style.strokeWidth + (isSelected ? 1 : 0));
+      if (style.arrowEnd !== false) path.setAttribute("marker-end", `url(#${endId})`);
+      if (style.arrowStart) path.setAttribute("marker-start", `url(#${startId})`);
+      const dash = DASH_PATTERNS[style.lineType];
+      if (dash) path.setAttribute("stroke-dasharray", dash);
       path.dataset.id = conn.id;
       path.addEventListener("mousedown", (e) => {
         e.stopPropagation();
@@ -1807,6 +1939,7 @@ class PlantBuilderApp {
       y1: snapToGrid(y),
       x2: snapToGrid(x + LINE_DEFAULT_LENGTH / 2),
       y2: snapToGrid(y),
+      style: defaultLineStyle(),
     });
     this.selectOne("line", id);
     this.render();
@@ -1882,14 +2015,24 @@ class PlantBuilderApp {
 
   renderFreeLines() {
     const svg = this.els.svg;
+    const defs = svg.querySelector("defs");
     for (const line of this.lines.values()) {
+      const style = { ...defaultLineStyle(), ...(line.style || {}) };
+      const isSelected = this.isSelected("line", line.id);
+      const { endId, startId } = this.ensureMarkersForColor(defs, style.strokeColor);
+
       const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
       el.setAttribute("x1", line.x1);
       el.setAttribute("y1", line.y1);
       el.setAttribute("x2", line.x2);
       el.setAttribute("y2", line.y2);
       el.setAttribute("class", "connector-line free-line");
-      el.setAttribute("marker-end", "url(#arrowhead)");
+      el.style.stroke = style.strokeColor;
+      el.style.strokeWidth = String(style.strokeWidth + (isSelected ? 1 : 0));
+      if (style.arrowEnd !== false) el.setAttribute("marker-end", `url(#${endId})`);
+      if (style.arrowStart) el.setAttribute("marker-start", `url(#${startId})`);
+      const dash = DASH_PATTERNS[style.lineType];
+      if (dash) el.setAttribute("stroke-dasharray", dash);
       el.dataset.id = line.id;
       el.addEventListener("mousedown", (e) => {
         e.stopPropagation();
@@ -2110,15 +2253,19 @@ class PlantBuilderApp {
       });
     }
     for (const c of layout.connectors) {
+      const { style: cStyle, ...rest } = c;
       this.connectors.set(c.id, {
-        style: { arrowStart: false, arrowEnd: true, lineType: "solid" },
         routing: { mode: "auto", points: [] },
         label: null,
-        ...c,
+        ...rest,
+        style: { ...defaultLineStyle(), ...(cStyle || {}) },
       });
     }
     for (const s of layout.shapes || []) this.shapes.set(s.id, s);
-    for (const l of layout.lines || []) this.lines.set(l.id, l);
+    for (const l of layout.lines || []) {
+      const { style: lStyle, ...rest } = l;
+      this.lines.set(l.id, { ...rest, style: { ...defaultLineStyle(), ...(lStyle || {}) } });
+    }
     this.currentLayoutId = layout.id;
     this.currentLayoutName = layout.name;
     this.setSaveStatus("Saved");
