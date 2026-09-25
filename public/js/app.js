@@ -32,6 +32,20 @@ function defaultLineStyle() {
   return { strokeColor: DEFAULT_STROKE_COLOR, strokeWidth: STROKE_WIDTHS.medium, lineType: "solid", arrowStart: false, arrowEnd: true };
 }
 
+// ---------- Text/note style system (Phase 3b) ----------
+const DEFAULT_TEXT_COLOR = "#1f2430";
+const TEXT_FONT_SIZES = { small: 11, medium: 12.5, large: 16 };
+
+function defaultTextStyle(overrides) {
+  return { fontSize: TEXT_FONT_SIZES.medium, bold: false, italic: false, color: DEFAULT_TEXT_COLOR, align: "left", ...overrides };
+}
+
+function textStyleToCss(style) {
+  const align = style.align === "center" || style.align === "right" ? style.align : "left";
+  return `font-size:${style.fontSize}px;font-weight:${style.bold ? 700 : 400};` +
+    `font-style:${style.italic ? "italic" : "normal"};color:${style.color};text-align:${align};`;
+}
+
 class PlantBuilderApp {
   constructor() {
     this.categories = [];
@@ -941,6 +955,64 @@ class PlantBuilderApp {
     });
   }
 
+  // ---------- Text style panel (Phase 3b) ----------
+  buildTextStylePanelHtml(style) {
+    const sizeKey = Object.entries(TEXT_FONT_SIZES).find(([, v]) => v === style.fontSize)?.[0] || "medium";
+    const safeColor = /^#[0-9a-f]{6}$/i.test(style.color) ? style.color : DEFAULT_TEXT_COLOR;
+    const swatches = STYLE_COLOR_PRESETS.concat(DEFAULT_TEXT_COLOR).map(
+      (c) => `<button type="button" class="style-swatch${c === safeColor ? " active" : ""}" data-textcolor="${c}" style="background:${c}" title="${c}"></button>`
+    ).join("");
+    return `
+      <div class="style-panel">
+        <div class="style-panel-label">Text style</div>
+        <div class="style-row style-swatches">
+          ${swatches}
+          <input type="color" id="textstyle-color-custom" value="${safeColor}" title="Custom color" />
+        </div>
+        <div class="style-row">
+          <select id="textstyle-size" title="Font size">
+            <option value="small"${sizeKey === "small" ? " selected" : ""}>Small</option>
+            <option value="medium"${sizeKey === "medium" ? " selected" : ""}>Medium</option>
+            <option value="large"${sizeKey === "large" ? " selected" : ""}>Large</option>
+          </select>
+          <select id="textstyle-align" title="Alignment">
+            <option value="left"${style.align === "left" ? " selected" : ""}>Left</option>
+            <option value="center"${style.align === "center" ? " selected" : ""}>Center</option>
+            <option value="right"${style.align === "right" ? " selected" : ""}>Right</option>
+          </select>
+        </div>
+        <div class="style-row style-row-arrows">
+          <label><input type="checkbox" id="textstyle-bold"${style.bold ? " checked" : ""} /> Bold</label>
+          <label><input type="checkbox" id="textstyle-italic"${style.italic ? " checked" : ""} /> Italic</label>
+        </div>
+      </div>`;
+  }
+
+  bindTextStylePanel(container, apply) {
+    for (const btn of container.querySelectorAll("[data-textcolor]")) {
+      btn.addEventListener("click", () => {
+        for (const b of container.querySelectorAll("[data-textcolor]")) b.classList.toggle("active", b === btn);
+        apply({ color: btn.dataset.textcolor });
+      });
+    }
+    container.querySelector("#textstyle-color-custom").addEventListener("input", (e) => {
+      for (const b of container.querySelectorAll("[data-textcolor]")) b.classList.remove("active");
+      apply({ color: e.target.value });
+    });
+    container.querySelector("#textstyle-size").addEventListener("change", (e) => {
+      apply({ fontSize: TEXT_FONT_SIZES[e.target.value] || TEXT_FONT_SIZES.medium });
+    });
+    container.querySelector("#textstyle-align").addEventListener("change", (e) => {
+      apply({ align: e.target.value });
+    });
+    container.querySelector("#textstyle-bold").addEventListener("change", (e) => {
+      apply({ bold: e.target.checked });
+    });
+    container.querySelector("#textstyle-italic").addEventListener("change", (e) => {
+      apply({ italic: e.target.checked });
+    });
+  }
+
   renderInspector() {
     const content = this.els.inspectorContent;
     if (this.selection.length === 0) {
@@ -1023,6 +1095,7 @@ class PlantBuilderApp {
     } else if (activeSelection.type === "shape") {
       const shape = this.shapes.get(activeSelection.id);
       if (!shape) return;
+      shape.textStyle = { ...defaultTextStyle(), ...(shape.textStyle || {}) };
       const kindLabel = { rect: "Rectangle", ellipse: "Ellipse", note: "Note", stockpile: "Stockpile" }[shape.kind] || "Shape";
       content.className = "";
       content.innerHTML = `
@@ -1033,8 +1106,14 @@ class PlantBuilderApp {
         </div>
         <label class="inspector-notes-label" for="inspector-notes">Text</label>
         <textarea id="inspector-notes" rows="4" placeholder="Label for this ${kindLabel.toLowerCase()}…">${escapeHtml(shape.text || "")}</textarea>
+        ${this.buildTextStylePanelHtml(shape.textStyle)}
         <button id="inspector-delete" class="danger">Delete from canvas</button>
       `;
+      this.bindTextStylePanel(content, (partial) => {
+        shape.textStyle = { ...shape.textStyle, ...partial };
+        this.renderShapes();
+        this.pushHistory();
+      });
       const textarea = document.getElementById("inspector-notes");
       textarea.addEventListener("input", (e) => {
         shape.text = e.target.value;
@@ -1108,6 +1187,13 @@ class PlantBuilderApp {
     const getLineLikeObj = (item) => (item.type === "line" ? this.lines.get(item.id) : this.connectors.get(item.id));
     const seedStyle = allLineLike ? { ...defaultLineStyle(), ...(getLineLikeObj(lineLikeItems[0])?.style || {}) } : null;
 
+    // Same idea for text style: only when every selected object is a
+    // shape (rect/ellipse/note/stockpile) do we show one shared text
+    // style panel that fans out to all of them.
+    const shapeItems = this.selection.filter((s) => s.type === "shape");
+    const allShapes = shapeItems.length === this.selection.length && shapeItems.length >= 2;
+    const seedTextStyle = allShapes ? { ...defaultTextStyle(), ...(this.shapes.get(shapeItems[0].id)?.textStyle || {}) } : null;
+
     content.className = "";
     content.innerHTML = `
       <div class="inspector-name">${this.selection.length} objects selected</div>
@@ -1115,6 +1201,7 @@ class PlantBuilderApp {
         ${boxItems.length} equipment/shape${boxItems.length === 1 ? "" : "s"}${otherCount > 0 ? `, ${otherCount} connector/line${otherCount === 1 ? "" : "s"}` : ""}
       </div>
       ${allLineLike ? this.buildStylePanelHtml(seedStyle) : ""}
+      ${allShapes ? this.buildTextStylePanelHtml(seedTextStyle) : ""}
       <div class="align-toolbar">
         <div class="align-toolbar-label">Align</div>
         <div class="align-toolbar-row">
@@ -1142,6 +1229,17 @@ class PlantBuilderApp {
           obj.style = { ...defaultLineStyle(), ...(obj.style || {}), ...partial };
         }
         this.renderConnectors();
+        this.pushHistory();
+      });
+    }
+    if (allShapes) {
+      this.bindTextStylePanel(content, (partial) => {
+        for (const item of shapeItems) {
+          const shape = this.shapes.get(item.id);
+          if (!shape) continue;
+          shape.textStyle = { ...defaultTextStyle(), ...(shape.textStyle || {}), ...partial };
+        }
+        this.renderShapes();
         this.pushHistory();
       });
     }
@@ -1919,6 +2017,7 @@ class PlantBuilderApp {
       width: size.width,
       height: size.height,
       text: kind === "note" ? "Note" : "",
+      textStyle: defaultTextStyle(kind === "stockpile" ? { bold: true, align: "center" } : undefined),
     });
     this.selectOne("shape", id);
     this.render();
@@ -1962,10 +2061,12 @@ class PlantBuilderApp {
       el.style.top = `${shape.y}px`;
       el.style.width = `${shape.width}px`;
       el.style.height = `${shape.height}px`;
+      const textStyle = shape.textStyle || defaultTextStyle();
+      const textCss = escapeAttr(textStyleToCss(textStyle));
       const body = shape.kind === "stockpile"
         ? `<div class="shape-stockpile-icon">${iconSvg("stockpile", "stockpiling")}</div>
-           <div class="shape-text shape-text-under">${escapeHtml(shape.text || "")}</div>`
-        : `<div class="shape-text">${escapeHtml(shape.text || "")}</div>`;
+           <div class="shape-text shape-text-under" style="${textCss}">${escapeHtml(shape.text || "")}</div>`
+        : `<div class="shape-text" style="${textCss}">${escapeHtml(shape.text || "")}</div>`;
       el.innerHTML = `
         ${body}
         ${connectDotsHtml()}
@@ -2261,7 +2362,10 @@ class PlantBuilderApp {
         style: { ...defaultLineStyle(), ...(cStyle || {}) },
       });
     }
-    for (const s of layout.shapes || []) this.shapes.set(s.id, s);
+    for (const s of layout.shapes || []) {
+      const { textStyle, ...rest } = s;
+      this.shapes.set(s.id, { ...rest, textStyle: { ...defaultTextStyle(), ...(textStyle || {}) } });
+    }
     for (const l of layout.lines || []) {
       const { style: lStyle, ...rest } = l;
       this.lines.set(l.id, { ...rest, style: { ...defaultLineStyle(), ...(lStyle || {}) } });
