@@ -55,3 +55,9 @@ export function updateUser(id, data) {
     body: JSON.stringify(data),
   }).then(handle);
 }
+
+// ---------- All Plants (admin/manager-only, Phase 6b) ----------
+
+export function fetchAllPlants() {
+  return fetch(`${BASE}/plants-all`, { credentials: "same-origin" }).then(handle);
+}

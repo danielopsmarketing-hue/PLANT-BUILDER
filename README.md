@@ -599,6 +599,36 @@ confirming equipment add/edit/delete still work through the new session-
 based gate, and the full accumulated regression suite from every earlier
 phase still green.
 
+## All Plants view (Phase 6b)
+
+**New `/plants.html`** (admin or manager, gated the same way as
+users.html): a read-only table of every saved plant across every
+account — name, owner, version, last updated, last opened — backed by
+the `/api/plants-all` endpoint that already existed from Phase 2d but
+had no UI consuming it yet. A search box filters by plant name or owner
+name client-side. Deliberately read-only: this is visibility into what
+reps are building, not an admin override that lets someone edit another
+user's layout — that's the "future sharing/versioning" capability the
+original spec explicitly scoped out of this phase, not something this
+view quietly backs into.
+
+**Permission enforcement** was mostly already in place from Phase 2d
+(every regular `/api/plants` route is owner-scoped at the data-access
+layer, not just the route handler) and Phase 2b's `requireRole`; this
+phase's job was building the one piece that used it
+(`requireRole("admin", "manager")` on `/api/plants-all`) and verifying
+the boundary actually holds end to end rather than assuming it does.
+
+**Tested:** a 10-point Playwright pass — a staff account's own
+`/api/plants` never includes another user's layout, a staff account gets
+both a client-side Access Denied on `/plants.html` and a server-side 403
+on direct API calls to `/api/plants-all`, an admin's All Plants view
+correctly includes a staff member's saved plant with the right owner
+name, a promoted manager can access the same view, and the search filter
+narrows by both plant name and owner name — plus a spot-check of the
+core canvas, Phase 3a, Phase 5c, and Phase 6a suites (all still green)
+after adding the new nav links to every page.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now

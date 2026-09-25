@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPS Group Plant Builder — All Plants</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/admin.css" />
+<link rel="stylesheet" href="css/auth.css" />
+</head>
+<body class="admin-body">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">OPS</div>
+      <div class="brand-text">
+        <div class="brand-name">OPS Group</div>
+        <div class="brand-tagline">All Plants</div>
+      </div>
+    </div>
+
+    <nav class="main-nav">
+      <a href="index.html">Builder</a>
+      <a href="admin.html">Equipment Library</a>
+      <a href="plants.html" class="active">All Plants</a>
+      <a href="users.html">Users</a>
+    </nav>
+
+    <div class="toolbar">
+      <input type="text" id="plants-search" placeholder="Search by plant name or owner..." />
+    </div>
+
+    <div id="user-badge" class="user-badge"></div>
+  </header>
+
+  <main class="admin-main">
+    <p class="admin-intro">
+      Every saved plant across every account, read-only — for visibility into what reps are
+      building, not for editing someone else's layout. Deleted layouts aren't shown here either;
+      this mirrors what each owner currently sees as "active" in their own Save/Load list.
+    </p>
+
+    <div id="admin-status" class="admin-status hidden"></div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Plant name</th>
+          <th>Owner</th>
+          <th>Version</th>
+          <th>Last updated</th>
+          <th>Last opened</th>
+        </tr>
+      </thead>
+      <tbody id="plants-table-body">
+        <tr><td colspan="5" class="admin-loading">Loading plants&hellip;</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script type="module">
+    import { requireLogin, renderUserBadge } from "./js/auth-guard.js";
+    const user = await requireLogin(); // redirects to /login.html if not authenticated
+    if (user) {
+      if (user.role !== "admin" && user.role !== "manager") {
+        document.body.innerHTML = `
+          <div class="auth-body">
+            <div class="auth-card">
+              <h1 class="auth-title">Access denied</h1>
+              <p class="auth-subtitle">All Plants is visible to admins and managers only. You're signed in as ${user.firstName} (${user.role}).</p>
+              <a class="auth-submit" href="/index.html">Back to the Builder</a>
+            </div>
+          </div>`;
+      } else {
+        renderUserBadge(document.getElementById("user-badge"), user);
+        await import("./js/plants.js");
+      }
+    }
+  </script>
+</body>
+</html>
