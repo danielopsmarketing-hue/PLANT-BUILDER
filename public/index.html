@@ -38,6 +38,7 @@
       <button id="btn-zoom-in" title="Zoom in">+</button>
       <button id="btn-zoom-reset" title="Reset view">Reset</button>
       <span class="toolbar-sep"></span>
+      <button id="btn-ai" title="Describe a plant in plain language and preview a draft layout">AI Assistant</button>
       <button id="btn-export" class="primary" title="Export a branded PNG">Export PNG</button>
     </div>
 
@@ -112,6 +113,33 @@
       <div class="modal-actions">
         <button id="modal-cancel">Cancel</button>
         <button id="modal-confirm" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-panel-backdrop" class="modal-backdrop hidden">
+    <div class="modal ai-modal">
+      <h3>
+        AI Plant Assistant
+        <span class="ai-stub-badge" title="Matches equipment by keyword against the real catalog -- not yet a full language model">Draft mode</span>
+      </h3>
+      <p class="ai-modal-hint">
+        Describe the plant in plain language, separating stages with commas or "then" -- e.g.
+        "a feeder, then a jaw crusher, then a screener, then a stockpile". We'll draft a layout
+        from real catalog equipment for you to review before anything is added to the canvas.
+      </p>
+      <textarea id="ai-prompt" rows="4" placeholder="Describe the plant..."></textarea>
+      <div class="ai-modal-actions">
+        <button id="ai-generate" class="primary">Generate Draft</button>
+      </div>
+      <div id="ai-results" class="ai-results hidden">
+        <div id="ai-results-summary" class="ai-results-summary"></div>
+        <ul id="ai-results-list" class="ai-results-list"></ul>
+        <div id="ai-results-warnings" class="ai-warnings"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="ai-cancel">Cancel</button>
+        <button id="ai-confirm" class="primary" disabled>Add to Canvas</button>
       </div>
     </div>
   </div>

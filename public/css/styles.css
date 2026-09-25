@@ -843,6 +843,54 @@ button.danger:hover { background: #fef2f2; }
 }
 .modal-actions button.primary { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
 
+/* ---------- AI plant assistant panel (Phase 5c) ---------- */
+
+.ai-modal { width: 460px; max-width: calc(100vw - 32px); }
+.ai-modal h3 { display: flex; align-items: center; gap: 8px; }
+.ai-stub-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: #f1f2f4;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 8px;
+  cursor: help;
+}
+.ai-modal-hint { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0 0 12px; }
+.ai-modal textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+.ai-modal-actions { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.ai-modal-actions button {
+  padding: 7px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--brand-primary);
+  background: var(--brand-primary);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ai-modal-actions button:disabled { opacity: 0.6; cursor: default; }
+
+.ai-results { margin: 10px 0 16px; padding: 12px; background: #f9fafb; border: 1px solid var(--border); border-radius: 6px; }
+.ai-results.hidden { display: none; }
+.ai-results-summary { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.ai-results-list { list-style: none; margin: 0 0 8px; padding: 0; font-size: 12.5px; }
+.ai-results-list li { padding: 3px 0; color: var(--text); }
+.ai-results-list li .ai-result-phrase { color: var(--text-muted); }
+.ai-warnings { font-size: 12px; color: var(--danger); line-height: 1.5; }
+.ai-warnings:empty { display: none; }
+
 /* ---------- Export layout (off-screen, rendered by html2canvas) ---------- */
 
 .export-wrapper {

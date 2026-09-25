@@ -90,6 +90,15 @@ class PlantBuilderApp {
       modalBackdrop: document.getElementById("modal-backdrop"),
       modalTitle: document.getElementById("modal-title"),
       modalInput: document.getElementById("modal-input"),
+      aiPanelBackdrop: document.getElementById("ai-panel-backdrop"),
+      aiPrompt: document.getElementById("ai-prompt"),
+      aiGenerate: document.getElementById("ai-generate"),
+      aiResults: document.getElementById("ai-results"),
+      aiResultsSummary: document.getElementById("ai-results-summary"),
+      aiResultsList: document.getElementById("ai-results-list"),
+      aiResultsWarnings: document.getElementById("ai-results-warnings"),
+      aiCancel: document.getElementById("ai-cancel"),
+      aiConfirm: document.getElementById("ai-confirm"),
     };
 
     this.bindToolbar();
@@ -282,9 +291,14 @@ class PlantBuilderApp {
     document.getElementById("btn-zoom-out").addEventListener("click", () => this.zoomBy(1 / 1.2));
     document.getElementById("btn-zoom-reset").addEventListener("click", () => this.resetView());
     document.getElementById("btn-export").addEventListener("click", () => this.exportPng());
+    document.getElementById("btn-ai").addEventListener("click", () => this.openAiPanel());
 
     document.getElementById("modal-cancel").addEventListener("click", () => this.closeModal());
     document.getElementById("modal-confirm").addEventListener("click", () => this.confirmModal());
+
+    this.els.aiGenerate.addEventListener("click", () => this.generateAiDraft());
+    this.els.aiCancel.addEventListener("click", () => this.closeAiPanel());
+    this.els.aiConfirm.addEventListener("click", () => this.confirmAiDraft());
   }
 
   // ---------- Canvas: drop, pan, zoom, rubber-band select ----------
@@ -2588,6 +2602,89 @@ class PlantBuilderApp {
 
     if (createCommands.length > 0) this.setSelection(createCommands.map((cmd, i) => ({ type: "node", id: createdIds[i] })).filter((s) => s.id));
     return { warnings, nodeCount: createCommands.length, connectorCount: followUpCommands.filter((c) => c.type === "addConnector").length };
+  }
+
+  // ---------- AI input panel (Phase 5c) ----------
+  //
+  // Prompt -> POST /api/ai/plan (a stub planner today -- see server/ai.js
+  // -- swapped for a real provider in Phase 5d without this panel
+  // changing) -> applyPlantSpec's live preview -> explicit confirm/cancel.
+  // Nothing touches the canvas's committed history until the user
+  // clicks "Add to Canvas".
+
+  openAiPanel() {
+    this.els.aiPrompt.value = "";
+    this.els.aiResults.classList.add("hidden");
+    this.els.aiConfirm.disabled = true;
+    this.els.aiPanelBackdrop.classList.remove("hidden");
+    this.els.aiPrompt.focus();
+  }
+
+  // Discards any not-yet-confirmed draft so closing the panel (by Cancel
+  // or by generating a fresh draft over an old one) never leaves stray
+  // preview objects sitting on the canvas outside of history.
+  closeAiPanel() {
+    if (this.hasPendingBatch()) this.discardPendingBatch();
+    this.els.aiPanelBackdrop.classList.add("hidden");
+  }
+
+  async generateAiDraft() {
+    const prompt = this.els.aiPrompt.value.trim();
+    if (!prompt) return;
+    if (this.hasPendingBatch()) this.discardPendingBatch();
+
+    this.els.aiGenerate.disabled = true;
+    this.els.aiGenerate.textContent = "Generating…";
+    try {
+      const res = await fetch("/api/ai/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ prompt }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((body && body.error) || "Couldn't generate a draft");
+
+      const applyResult = this.applyPlantSpec(body.spec, { preview: true });
+      this.renderAiResults(body, applyResult);
+    } catch (err) {
+      console.error("AI draft generation failed:", err);
+      this.els.aiResults.classList.remove("hidden");
+      this.els.aiResultsSummary.textContent = "Something went wrong generating a draft.";
+      this.els.aiResultsList.innerHTML = "";
+      this.els.aiResultsWarnings.textContent = err.message;
+      this.els.aiConfirm.disabled = true;
+    } finally {
+      this.els.aiGenerate.disabled = false;
+      this.els.aiGenerate.textContent = "Generate Draft";
+    }
+  }
+
+  renderAiResults(planResponse, applyResult) {
+    this.els.aiResults.classList.remove("hidden");
+    this.els.aiResultsSummary.textContent = applyResult.nodeCount > 0
+      ? `Drafted ${applyResult.nodeCount} piece${applyResult.nodeCount === 1 ? "" : "s"} of equipment and ${applyResult.connectorCount} connection${applyResult.connectorCount === 1 ? "" : "s"} — review on the canvas, then confirm or cancel.`
+      : "Couldn't match any real catalog equipment to that description.";
+
+    this.els.aiResultsList.innerHTML = (planResponse.matched || [])
+      .map((m) => `<li>${escapeHtml(m.name)} <span class="ai-result-phrase">— from "${escapeHtml(m.phrase)}"</span></li>`)
+      .join("");
+
+    const unmatched = planResponse.unmatchedPhrases || [];
+    const otherWarnings = applyResult.warnings || [];
+    const warningLines = [
+      ...unmatched.map((p) => `No catalog match for "${p}".`),
+      ...otherWarnings,
+    ];
+    this.els.aiResultsWarnings.textContent = warningLines.join(" ");
+
+    this.els.aiConfirm.disabled = applyResult.nodeCount === 0;
+  }
+
+  confirmAiDraft() {
+    if (!this.hasPendingBatch()) return;
+    this.commitPendingBatch();
+    this.els.aiPanelBackdrop.classList.add("hidden");
   }
 
   // ---------- Autosave (Phase 2e) ----------

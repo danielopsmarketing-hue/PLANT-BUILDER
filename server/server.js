@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const db = require("./db");
 const auth = require("./auth");
 const plants = require("./plants");
+const ai = require("./ai");
 const { CATEGORIES } = require("./seed-data");
 
 const PORT = process.env.PORT || 4000;
@@ -238,6 +239,19 @@ app.get("/api/equipment/:id", (req, res) => {
   const item = db.get(req.params.id);
   if (!item) return res.status(404).json({ error: "Not found" });
   res.json(item);
+});
+
+// ---------- AI plant input (Phase 5c/5d) ----------
+//
+// Stub planner (see ai.js) -- keyword/phrase matching against the real
+// catalog via search_equipment, not a real language model. Kept behind
+// auth like the rest of the Builder's write surface even though it's
+// read-only against the catalog, since it's part of the same session-
+// gated feature.
+app.post("/api/ai/plan", auth.requireAuth, (req, res) => {
+  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
+  if (!prompt.trim()) return res.status(400).json({ error: "prompt is required" });
+  res.json(ai.planFromPrompt(prompt));
 });
 
 app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) => {
