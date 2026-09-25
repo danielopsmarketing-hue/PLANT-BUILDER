@@ -1,55 +1,50 @@
-// localStorage-backed save/load. This is a stand-in for real server-side
-// persistence (see brief: "Backend + database"). It proves the save/load
-// interaction works, nothing more — layouts here are single-browser only.
+// Thin client over the real plant-projects API (server/plants.js) --
+// replaces the earlier localStorage-only stand-in. Same exported
+// function names/shapes as before, so app.js's calling code barely
+// changed to move onto this.
 
-const STORAGE_KEY = "plantBuilder.layouts";
+const BASE = "/api/plants";
 
-function readAll() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.error("Failed to read saved layouts", err);
-    return [];
-  }
+async function handle(res) {
+  if (res.status === 204) return null;
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((body && body.error) || `Request failed (${res.status})`);
+  return body;
 }
 
-function writeAll(layouts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts));
-}
-
-export function listLayouts() {
-  return readAll()
-    .map((l) => ({ id: l.id, name: l.name, savedAt: l.savedAt }))
+export async function listLayouts() {
+  const plants = await fetch(BASE, { credentials: "same-origin" }).then(handle);
+  return plants
+    .map((p) => ({ id: p.id, name: p.name, savedAt: new Date(p.updatedAt).getTime() }))
     .sort((a, b) => b.savedAt - a.savedAt);
 }
 
-export function saveLayout(name, state) {
-  const layouts = readAll();
-  const id = state.id || `layout-${Date.now()}`;
-  const record = {
-    id,
-    name,
-    savedAt: Date.now(),
-    nodes: state.nodes,
-    connectors: state.connectors,
-    shapes: state.shapes || [],
-    lines: state.lines || [],
-  };
-  const existingIndex = layouts.findIndex((l) => l.id === id);
-  if (existingIndex >= 0) {
-    layouts[existingIndex] = record;
-  } else {
-    layouts.push(record);
+export async function saveLayout(name, state) {
+  const data = { nodes: state.nodes, connectors: state.connectors, shapes: state.shapes, lines: state.lines };
+  if (state.id) {
+    const updated = await fetch(`${BASE}/${state.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ name, data }),
+    }).then(handle);
+    return updated.id;
   }
-  writeAll(layouts);
-  return id;
+  const created = await fetch(BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ name, data }),
+  }).then(handle);
+  return created.id;
 }
 
-export function loadLayout(id) {
-  return readAll().find((l) => l.id === id) || null;
+export async function loadLayout(id) {
+  const plant = await fetch(`${BASE}/${id}`, { credentials: "same-origin" }).then(handle).catch(() => null);
+  if (!plant) return null;
+  return { id: plant.id, name: plant.name, ...plant.data };
 }
 
-export function deleteLayout(id) {
-  writeAll(readAll().filter((l) => l.id !== id));
+export async function deleteLayout(id) {
+  await fetch(`${BASE}/${id}`, { method: "DELETE", credentials: "same-origin" }).then(handle);
 }

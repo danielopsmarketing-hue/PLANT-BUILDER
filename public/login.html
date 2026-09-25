@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPS Group Plant Builder — Log in</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/auth.css" />
+</head>
+<body class="auth-body">
+  <div class="auth-card">
+    <div class="brand auth-brand">
+      <div class="brand-mark">OPS</div>
+      <div class="brand-text">
+        <div class="brand-name">OPS Group</div>
+        <div class="brand-tagline">Plant Builder</div>
+      </div>
+    </div>
+
+    <h1 class="auth-title">Log in</h1>
+    <div id="auth-error" class="auth-error hidden"></div>
+
+    <form id="login-form">
+      <div class="field-row">
+        <label for="field-email">Email</label>
+        <input type="email" id="field-email" required autocomplete="email" />
+      </div>
+      <div class="field-row">
+        <label for="field-password">Password</label>
+        <input type="password" id="field-password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="primary auth-submit">Log in</button>
+    </form>
+  </div>
+
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

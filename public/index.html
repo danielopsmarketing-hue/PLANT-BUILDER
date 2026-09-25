@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>OPS Group Plant Builder</title>
 <link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/auth.css" />
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +28,7 @@
       <select id="load-select" title="Saved layouts"></select>
       <button id="btn-load" title="Load selected layout">Load</button>
       <button id="btn-delete-layout" title="Delete selected saved layout" class="danger">Delete</button>
+      <span id="save-status" class="save-status"></span>
       <span class="toolbar-sep"></span>
       <button id="btn-undo" title="Undo (Ctrl+Z)">&#8630;</button>
       <button id="btn-redo" title="Redo (Ctrl+Shift+Z)">&#8631;</button>
@@ -38,6 +40,8 @@
       <span class="toolbar-sep"></span>
       <button id="btn-export" class="primary" title="Export a branded PNG">Export PNG</button>
     </div>
+
+    <div id="user-badge" class="user-badge"></div>
   </header>
 
   <main class="workspace">
@@ -109,6 +113,13 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module">
+    import { requireLogin, renderUserBadge } from "./js/auth-guard.js";
+    const user = await requireLogin(); // redirects to /login.html if not authenticated
+    if (user) {
+      renderUserBadge(document.getElementById("user-badge"), user);
+      await import("./js/app.js");
+    }
+  </script>
 </body>
 </html>

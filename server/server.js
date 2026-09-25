@@ -6,6 +6,7 @@ const crypto = require("crypto");
 
 const db = require("./db");
 const auth = require("./auth");
+const plants = require("./plants");
 const { CATEGORIES } = require("./seed-data");
 
 const PORT = process.env.PORT || 4000;
@@ -168,6 +169,50 @@ app.patch("/api/users/:id", auth.requireAuth, auth.requireRole("admin"), (req, r
   const { role, status } = req.body || {};
   const user = auth.updateUser(req.params.id, { role, status });
   res.json(auth.toSafeUser(user));
+});
+
+// ---------- Plant projects (Phase 2d/2e) ----------
+//
+// Owner-only for now -- the Admin/Manager "see everyone's plants" view
+// is a separate, explicitly later capability (Phase 6b's /api/plants/all),
+// not folded in here.
+
+app.get("/api/plants", auth.requireAuth, (req, res) => {
+  res.json(plants.listForUser(req.user.id));
+});
+
+app.post("/api/plants", auth.requireAuth, (req, res) => {
+  const { name, data } = req.body || {};
+  res.status(201).json(plants.create(req.user.id, { name, data }));
+});
+
+app.get("/api/plants/:id", auth.requireAuth, (req, res) => {
+  const plant = plants.getForUser(req.params.id, req.user.id);
+  if (!plant) return res.status(404).json({ error: "Not found" });
+  res.json(plant);
+});
+
+app.put("/api/plants/:id", auth.requireAuth, (req, res) => {
+  const { name, data } = req.body || {};
+  res.json(plants.update(req.params.id, req.user.id, { name, data }));
+});
+
+app.patch("/api/plants/:id", auth.requireAuth, (req, res) => {
+  const { name } = req.body || {};
+  res.json(plants.rename(req.params.id, req.user.id, name));
+});
+
+app.post("/api/plants/:id/duplicate", auth.requireAuth, (req, res) => {
+  res.status(201).json(plants.duplicate(req.params.id, req.user.id));
+});
+
+app.delete("/api/plants/:id", auth.requireAuth, (req, res) => {
+  plants.remove(req.params.id, req.user.id);
+  res.status(204).end();
+});
+
+app.get("/api/plants-all", auth.requireAuth, auth.requireRole("admin", "manager"), (req, res) => {
+  res.json(plants.listAll());
 });
 
 // ---------- Equipment ----------

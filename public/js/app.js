@@ -35,6 +35,7 @@ class PlantBuilderApp {
     this.selection = []; // array of { type: 'node' | 'connector' | 'shape' | 'line', id } -- multi-select capable
     this.view = { scale: 1, panX: 40, panY: 40 };
     this.currentLayoutId = null;
+    this.currentLayoutName = null;
     this.nextId = 1;
     this.collapsedCategories = new Set();
     this.searchTerm = "";
@@ -56,6 +57,7 @@ class PlantBuilderApp {
       inspectorContent: document.getElementById("inspector-content"),
       zoomLevel: document.getElementById("zoom-level"),
       loadSelect: document.getElementById("load-select"),
+      saveStatus: document.getElementById("save-status"),
       modalBackdrop: document.getElementById("modal-backdrop"),
       modalTitle: document.getElementById("modal-title"),
       modalInput: document.getElementById("modal-input"),
@@ -1982,6 +1984,45 @@ class PlantBuilderApp {
       this.historyIndex--;
     }
     this.updateHistoryButtons();
+    this.scheduleAutosave();
+  }
+
+  // ---------- Autosave (Phase 2e) ----------
+  //
+  // Only fires once a plant has been explicitly saved at least once
+  // (currentLayoutId is set) -- a brand-new unsaved canvas isn't
+  // autosaved out from under someone who hasn't chosen a name yet.
+  // Debounced: a burst of edits (a drag, several quick placements)
+  // collapses into one save a couple of seconds after the last change,
+  // not one save per mutation.
+
+  scheduleAutosave() {
+    if (!this.currentLayoutId) return;
+    clearTimeout(this._autosaveTimer);
+    this.setSaveStatus("Unsaved changes");
+    this._autosaveTimer = setTimeout(() => this.autosaveNow(), 2000);
+  }
+
+  async autosaveNow() {
+    if (!this.currentLayoutId) return;
+    this.setSaveStatus("Saving…");
+    try {
+      await saveLayout(this.currentLayoutName, {
+        id: this.currentLayoutId,
+        nodes: Array.from(this.nodes.values()),
+        connectors: Array.from(this.connectors.values()),
+        shapes: Array.from(this.shapes.values()),
+        lines: Array.from(this.lines.values()),
+      });
+      this.setSaveStatus("Saved");
+    } catch (err) {
+      console.error("Autosave failed:", err);
+      this.setSaveStatus("Save failed");
+    }
+  }
+
+  setSaveStatus(text) {
+    if (this.els.saveStatus) this.els.saveStatus.textContent = text;
   }
 
   restoreSnapshot(snap) {
@@ -2021,6 +2062,7 @@ class PlantBuilderApp {
     this.shapes.clear();
     this.lines.clear();
     this.currentLayoutId = null;
+    this.currentLayoutName = null;
     this.setSelection([]);
     this.resetView();
     this.render();
@@ -2028,23 +2070,32 @@ class PlantBuilderApp {
   }
 
   promptSave() {
-    this.openModal("Save Layout", "Save", (name) => {
+    this.openModal("Save Layout", "Save", async (name) => {
       if (!name) return;
-      this.currentLayoutId = saveLayout(name, {
-        id: this.currentLayoutId,
-        nodes: Array.from(this.nodes.values()),
-        connectors: Array.from(this.connectors.values()),
-        shapes: Array.from(this.shapes.values()),
-        lines: Array.from(this.lines.values()),
-      });
-      this.refreshLayoutList();
+      this.setSaveStatus("Saving…");
+      try {
+        this.currentLayoutId = await saveLayout(name, {
+          id: this.currentLayoutId,
+          nodes: Array.from(this.nodes.values()),
+          connectors: Array.from(this.connectors.values()),
+          shapes: Array.from(this.shapes.values()),
+          lines: Array.from(this.lines.values()),
+        });
+        this.currentLayoutName = name;
+        this.setSaveStatus("Saved");
+        await this.refreshLayoutList();
+      } catch (err) {
+        console.error("Save failed:", err);
+        this.setSaveStatus("Save failed");
+        alert("Couldn't save this layout. Please try again.");
+      }
     });
   }
 
-  loadSelected() {
+  async loadSelected() {
     const id = this.els.loadSelect.value;
     if (!id) return;
-    const layout = loadLayout(id);
+    const layout = await loadLayout(id);
     if (!layout) return;
 
     this.nodes.clear();
@@ -2069,24 +2120,30 @@ class PlantBuilderApp {
     for (const s of layout.shapes || []) this.shapes.set(s.id, s);
     for (const l of layout.lines || []) this.lines.set(l.id, l);
     this.currentLayoutId = layout.id;
+    this.currentLayoutName = layout.name;
+    this.setSaveStatus("Saved");
     this.setSelection([]);
     this.render();
     this.resetHistory();
   }
 
-  deleteSelected() {
+  async deleteSelected() {
     const id = this.els.loadSelect.value;
     if (!id) return;
     if (!confirm("Delete this saved layout? This cannot be undone.")) return;
-    deleteLayout(id);
-    if (this.currentLayoutId === id) this.currentLayoutId = null;
-    this.refreshLayoutList();
+    await deleteLayout(id);
+    if (this.currentLayoutId === id) {
+      this.currentLayoutId = null;
+      this.currentLayoutName = null;
+      this.setSaveStatus("");
+    }
+    await this.refreshLayoutList();
   }
 
-  refreshLayoutList() {
+  async refreshLayoutList() {
     const select = this.els.loadSelect;
     select.innerHTML = '<option value="">Saved layouts…</option>';
-    for (const layout of listLayouts()) {
+    for (const layout of await listLayouts()) {
       const opt = document.createElement("option");
       opt.value = layout.id;
       opt.textContent = layout.name;
@@ -2114,7 +2171,7 @@ class PlantBuilderApp {
     const value = this.els.modalInput.value.trim();
     const cb = this._modalOnConfirm;
     this.closeModal();
-    if (cb) cb(value);
+    if (cb) Promise.resolve(cb(value)).catch((err) => console.error("Modal confirm handler failed:", err));
   }
 
   // ---------- Export ----------
@@ -2322,6 +2379,14 @@ function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, "&quot;");
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+function boot() {
   window.plantBuilder = new PlantBuilderApp();
-});
+}
+
+// app.js is now dynamically imported after an async login check, so
+// DOMContentLoaded may have already fired by the time this runs.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}

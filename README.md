@@ -379,6 +379,87 @@ invalidating the old password — all 26 passing. The full pre-existing
 Playwright regression suite (canvas, connectors, equipment admin) was
 also re-run and is unaffected, since none of that code was touched.
 
+## Plant projects & login (Phase 2d/2e)
+
+Layouts are no longer `localStorage` — they're `plant_projects` rows in the
+same SQLite database, owned by the account that created them, served
+through a real login UI. This closes out the two-parallel-systems gap
+called out below: the Builder (`index.html`) now requires a session the
+same way `/api/plants` already did.
+
+**Model** (`server/plants.js`):
+```
+plant_projects: id, name, ownerId, createdBy, updatedBy,
+                 status (active | deleted), version,
+                 thumbnail, data (JSON TEXT: nodes/connectors/shapes/lines),
+                 createdAt, updatedAt, lastOpenedAt
+```
+Ownership is enforced in the data-access functions themselves (every
+lookup is scoped to `ownerId = :userId`), not just in the route handler —
+a staff account can't reach another user's plant by guessing an id.
+Delete is soft (`status = 'deleted'`), matching the same "don't erase
+ownership history" reasoning already used for deactivated users.
+`listAll()` (joined with the owner's name) exists now but is only used by
+the admin-only `/api/plants-all` route — the actual "All Plants" *view* is
+still Phase 6b.
+
+**Routes** (all require login; `credentials: "same-origin"` from the
+client):
+```
+GET    /api/plants                — the logged-in user's own active plants
+POST   /api/plants                — create
+GET    /api/plants/:id            — owner-only
+PUT    /api/plants/:id            — owner-only; bumps version
+PATCH  /api/plants/:id            — owner-only; rename
+DELETE /api/plants/:id            — owner-only; soft-delete
+POST   /api/plants/:id/duplicate  — owner-only
+GET    /api/plants-all            — admin/manager only, all users' plants
+```
+
+**Login UI:** `login.html` (email/password), `set-password.html` (token
+from an invitation link → set a password → activated + logged in
+straight away). Both are plain static pages, no framework, matching the
+rest of the app. `js/auth-guard.js` exposes `requireLogin()` — called from
+`index.html` before `app.js` even loads, so an unauthenticated visitor is
+redirected to `login.html?redirect=...` and never sees the canvas. This
+guard is documented in its own source as **UX convenience only** — the
+real boundary is server-side session validation on every `/api/*` call,
+same as before.
+
+**Autosave:** `storage.js` moved from a synchronous localStorage shim to
+an async thin client over `/api/plants` (same exported function names, so
+call sites barely changed). `app.js` debounces a save 2 seconds after any
+history-producing edit (`pushHistory()` → `scheduleAutosave()`), but only
+once a plant has been explicitly saved at least once (`currentLayoutId`
+set) — a brand-new unnamed canvas is never silently persisted. A
+`#save-status` indicator in the toolbar shows "Unsaved changes" / "Saving…"
+/ "Saved" / "Save failed".
+
+**A bootstrap-order bug found and fixed during this phase:** gating
+`app.js` behind an async login check meant it had to be loaded via a
+dynamic `import()` *after* `await requireLogin()` resolved — by which
+point `DOMContentLoaded` had already fired, so app.js's old
+`document.addEventListener("DOMContentLoaded", ...)` bootstrap never ran
+and the canvas silently never initialized. Fixed by checking
+`document.readyState` and booting immediately if the document was already
+past `loading`.
+
+**Tested:** an 11-point Playwright end-to-end pass — unauthenticated
+redirect, login, placing a shape, manual save, verifying persistence via
+a direct API call, editing + waiting for the autosave debounce and
+confirming the save-status indicator, reloading the page and finding the
+plant still listed, loading it back with its content intact, deleting it,
+and confirming it's gone from both the UI and the API. A separate
+core-engine regression pass (equipment placement, connector routing,
+undo, redo) confirmed nothing in the canvas engine itself regressed from
+the auth-gating changes.
+
+**Not done in this phase, deliberately:** `admin.html`'s own auth gate is
+still the original shared-password Basic Auth — switching it to
+`requireRole("admin")` is grouped with Phase 6a (Users admin page) below,
+since that's the natural place to also expose role management in the UI
+rather than just cutting the gate over with nothing to manage it yet.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now
@@ -411,14 +492,13 @@ workstreams (AI plant input, advanced canvas/drawing, staff backend) — see
 the session's task list for the current sequence and status. The
 near-term backend pieces:
 
-1. **Plant project persistence + ownership** (Phase 2d/2e) — layouts
-   still live in `localStorage` only; moving them server-side with real
-   ownership (tied to the accounts in "Accounts & authentication" above)
-   is the next piece, same shape as the equipment catalog work already
-   done.
-2. **Login/invitation-setup UI and switching admin.html over to real
-   accounts** (Phase 6a) — the account system above is a tested backend
-   only; no page in the app uses it yet, by design (see that section).
+1. **Switching `admin.html` over to real accounts** (Phase 6a) — the
+   Builder now requires real login (see "Plant projects & login" above);
+   the equipment admin page is the one remaining surface still on the
+   original shared-password Basic Auth.
+2. **Users admin page** (Phase 6a) and **All Plants management view**
+   (Phase 6b) — the backend for both (`/api/users`, `/api/plants-all`)
+   already exists and is tested; no UI consumes them yet.
 
 ## Constraints that should not change without a conversation
 
