@@ -1,5 +1,9 @@
 server/node_modules/
 server/data/*.json
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+server/data/*.db-shm
 server/uploads/*
 !server/uploads/.gitkeep
 !server/data/.gitkeep

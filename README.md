@@ -30,9 +30,11 @@ Then open `http://localhost:4000` — the server serves the frontend
 (`public/`) and the API from one process. A nav pill in the top bar
 ("Builder" / "Equipment Library") switches between the two pages.
 
-On first run the server seeds `server/data/equipment.json` with the
-placeholder catalog (from `server/seed-data.js`). Edit, replace, or wipe
-that file from the admin UI — nothing about it is permanent.
+On first run the server creates `server/data/plantbuilder.db` (SQLite) and
+seeds it with the real 77-product catalog (from `server/seed-data.js`).
+Edit or delete records from the admin UI — nothing in the seed is
+permanent. See "Database" below for how this is structured and how an
+existing JSON-file deployment upgrades.
 
 ### Protecting the admin page
 
@@ -216,9 +218,11 @@ image is uploaded for that item.
 ```
 server/
   server.js       — Express app: static hosting + REST API + uploads
-  db.js           — JSON-file-backed CRUD for the equipment catalog
-  seed-data.js    — placeholder catalog loaded on first run
-  data/           — equipment.json lives here (gitignored)
+  database.js     — shared SQLite connection (one DB file for the app;
+                    future tables — users, plant projects — go here too)
+  db.js           — equipment-catalog CRUD, on the shared connection
+  seed-data.js    — real 77-product catalog loaded into a fresh database
+  data/           — plantbuilder.db lives here (gitignored)
   uploads/        — uploaded product images (gitignored)
 public/
   index.html      — the builder
@@ -244,12 +248,59 @@ pasted/inline image, or push it into the repo directly (e.g.
 `public/assets/ops-group-logo.svg` or `.png`) and say so — either way it's
 a five-minute wire-up once the file itself is reachable.
 
+## Database
+
+The equipment catalog moved from a flat JSON file to SQLite
+(`server/data/plantbuilder.db`), via Node's built-in `node:sqlite` — no
+native module to compile, no separate DB server to run, same
+zero-dependency shape the JSON-file store had. Requires **Node ≥22.5**
+(see `server/package.json`'s `engines` field); older Node will fail at
+startup with a clear "Cannot find module 'node:sqlite'" error rather than
+a confusing one.
+
+**Why now, and why this way:** saved plant *layouts* (Phase 2d/2e, not
+yet built) need real ownership — a `plant_projects` table with an
+`ownerId` foreign key to a future `users` table. That's not a sensible
+thing to bolt onto a JSON array; it needs an actual relational store.
+Moving the catalog first, on its own, keeps this change small and
+independently testable before anything depends on it.
+
+**One connection, one file, split for what's coming.**
+`server/database.js` owns the single `DatabaseSync` connection and the
+one `.db` file; `server/db.js` (equipment) creates its own table on that
+shared connection via `CREATE TABLE IF NOT EXISTS` and exports the exact
+same `list/get/create/update/remove` functions it always had — `server.js`
+needed no changes for this migration. When Phase 2b/2d add `users` and
+`plant_projects`, they'll each be a new file doing the same thing on the
+same connection, not a second database to reconcile.
+
+**Upgrading an existing (JSON-file) deployment:** fully automatic and
+non-destructive. On first run, if `equipment.db` is empty and an old
+`server/data/equipment.json` is present, its exact records are imported
+(preserving any real catalog edits) instead of reseeding from
+`seed-data.js`; a brand-new install with neither file seeds fresh. The
+old JSON file is never deleted or written to — it's only ever read once,
+so it stays on disk afterward as a safety net.
+
+**Rollback:** revert this commit (`git revert`, or check out the prior
+commit) and the app is back to reading `equipment.json` directly — since
+that file was never touched by the migration, no data recovery step is
+needed. Deleting `plantbuilder.db` and restarting re-runs the same
+migration/seed logic from scratch.
+
+**Tested:** full create/read/update/delete through the real admin UI
+(including an image upload) against a fresh SQLite database, the
+JSON→SQLite migration path with real records, and the complete existing
+Playwright regression suite (canvas, connectors, drag-and-drop, admin) —
+all passing against the new backend with no behavior change.
+
 ## Deploying (Railway)
 
-Two things the host needs to support, because the catalog store and
-uploaded images are files on disk, not a database: a long-running Node
-process (not pure serverless), and a **persistent volume** — some hosts
-wipe local disk on every redeploy, which would silently erase the catalog.
+Two things the host needs to support, because the catalog store (now
+SQLite) and uploaded images are still files on disk, not a managed
+database service: a long-running Node process (not pure serverless), and
+a **persistent volume** — some hosts wipe local disk on every redeploy,
+which would silently erase the catalog.
 
 1. Push this branch (or merge it to whatever branch you deploy from).
 2. On [railway.app](https://railway.app), New Project → Deploy from GitHub
@@ -270,13 +321,18 @@ wipe local disk on every redeploy, which would silently erase the catalog.
 
 ## What needs to be built next
 
-1. **Saved-layout persistence** — layouts still live in `localStorage`
-   only. Moving them server-side (with the same JSON-file or a real DB) is
-   the next piece, same shape as the equipment catalog work just done.
-2. **Accounts/auth** — reps log in; layouts are tied to an account. The
-   admin page now has a basic password gate, but that's separate from
-   rep-facing accounts, which are still needed before saved-layout
-   persistence can be multi-user.
+This project is now being worked as a set of phased, task-tracked
+workstreams (AI plant input, advanced canvas/drawing, staff backend) — see
+the session's task list for the current sequence and status. The
+near-term backend pieces:
+
+1. **User accounts, roles, and self-hosted auth** (Phase 2b) — on the
+   SQLite database above; the admin page's HTTP Basic Auth gate is a
+   stand-in, not the real per-rep account system.
+2. **Plant project persistence + ownership** (Phase 2d/2e) — layouts
+   still live in `localStorage` only; moving them server-side with real
+   ownership (tied to the accounts above) is the next piece, same shape
+   as the equipment catalog work just done.
 
 ## Constraints that should not change without a conversation
 

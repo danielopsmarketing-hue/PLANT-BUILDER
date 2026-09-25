@@ -1,55 +1,107 @@
-// Minimal JSON-file-backed data store for the equipment catalog.
-// No native modules to compile, no DB server to run — just a file on disk.
-// Fine for a single small admin team; revisit if concurrent-write conflicts
-// ever become a real problem.
+// Equipment catalog, on the shared SQLite connection (see database.js).
+//
+// Public API is unchanged from the JSON-file version (list/get/create/
+// update/remove) so server.js needed no changes for this migration.
 
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { db, DATA_DIR } = require("./database");
 const { EQUIPMENT: SEED_EQUIPMENT } = require("./seed-data");
 
-const DATA_DIR = path.join(__dirname, "data");
-const DATA_FILE = path.join(DATA_DIR, "equipment.json");
+const LEGACY_JSON_FILE = path.join(DATA_DIR, "equipment.json");
 
-function ensureStore() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DATA_FILE)) {
-    const now = new Date().toISOString();
-    const seeded = SEED_EQUIPMENT.map((item) => ({
-      id: crypto.randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-      ...item,
-    }));
-    fs.writeFileSync(DATA_FILE, JSON.stringify(seeded, null, 2));
-  }
-}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS equipment (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL,
+    icon TEXT NOT NULL DEFAULT 'generic',
+    specs TEXT NOT NULL DEFAULT '{}',
+    imagePath TEXT,
+    brochureUrl TEXT,
+    stockUrl TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  )
+`);
 
-function readAll() {
-  ensureStore();
-  const raw = fs.readFileSync(DATA_FILE, "utf-8");
+seedIfEmpty();
+
+// First run against a fresh DB file: if an equipment.json from the old
+// JSON-file store is sitting there (an existing deployment being
+// upgraded), import its real records instead of silently reseeding over
+// whatever the catalog admin already edited. Only a brand-new install
+// (no JSON file either) seeds from server/seed-data.js.
+function seedIfEmpty() {
+  const { count } = db.prepare("SELECT COUNT(*) AS count FROM equipment").get();
+  if (count > 0) return;
+
+  const source = fs.existsSync(LEGACY_JSON_FILE) ? loadLegacyJson() : null;
+  const now = new Date().toISOString();
+  const rows = source
+    ? source
+    : SEED_EQUIPMENT.map((item) => ({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, ...item }));
+
+  const insert = db.prepare(`
+    INSERT INTO equipment (id, name, model, category, icon, specs, imagePath, brochureUrl, stockUrl, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  db.exec("BEGIN");
   try {
-    return JSON.parse(raw);
+    for (const item of rows) insert.run(...rowParams(item));
+    db.exec("COMMIT");
   } catch (err) {
-    console.error("equipment.json is corrupt:", err);
-    return [];
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  if (source) {
+    console.log(`Migrated ${source.length} equipment records from equipment.json into plantbuilder.db`);
   }
 }
 
-function writeAll(items) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+function loadLegacyJson() {
+  try {
+    return JSON.parse(fs.readFileSync(LEGACY_JSON_FILE, "utf-8"));
+  } catch (err) {
+    console.error("Couldn't read legacy equipment.json, seeding from server/seed-data.js instead:", err);
+    return null;
+  }
+}
+
+function rowParams(item) {
+  return [
+    item.id,
+    item.name,
+    item.model || "",
+    item.category,
+    item.icon || "generic",
+    JSON.stringify(item.specs || {}),
+    item.imagePath || null,
+    item.brochureUrl || null,
+    item.stockUrl || null,
+    item.createdAt,
+    item.updatedAt,
+  ];
+}
+
+function rowToItem(row) {
+  if (!row) return null;
+  return { ...row, specs: JSON.parse(row.specs) };
 }
 
 function list() {
-  return readAll().sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  const rows = db.prepare("SELECT * FROM equipment").all();
+  return rows.map(rowToItem).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
 }
 
 function get(id) {
-  return readAll().find((item) => item.id === id) || null;
+  return rowToItem(db.prepare("SELECT * FROM equipment WHERE id = ?").get(id));
 }
 
 function create(data) {
-  const items = readAll();
   const now = new Date().toISOString();
   const item = {
     id: crypto.randomUUID(),
@@ -64,17 +116,17 @@ function create(data) {
     createdAt: now,
     updatedAt: now,
   };
-  items.push(item);
-  writeAll(items);
+  db.prepare(`
+    INSERT INTO equipment (id, name, model, category, icon, specs, imagePath, brochureUrl, stockUrl, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(...rowParams(item));
   return item;
 }
 
 function update(id, data) {
-  const items = readAll();
-  const index = items.findIndex((item) => item.id === id);
-  if (index === -1) return null;
+  const existing = get(id);
+  if (!existing) return null;
 
-  const existing = items[index];
   const updated = {
     ...existing,
     name: data.name ?? existing.name,
@@ -87,18 +139,28 @@ function update(id, data) {
     imagePath: data.imagePath !== undefined ? data.imagePath : existing.imagePath,
     updatedAt: new Date().toISOString(),
   };
-  items[index] = updated;
-  writeAll(items);
+  db.prepare(`
+    UPDATE equipment
+    SET name = ?, model = ?, category = ?, icon = ?, specs = ?, imagePath = ?, brochureUrl = ?, stockUrl = ?, updatedAt = ?
+    WHERE id = ?
+  `).run(
+    updated.name,
+    updated.model,
+    updated.category,
+    updated.icon,
+    JSON.stringify(updated.specs),
+    updated.imagePath,
+    updated.brochureUrl,
+    updated.stockUrl,
+    updated.updatedAt,
+    id
+  );
   return updated;
 }
 
 function remove(id) {
-  const items = readAll();
-  const index = items.findIndex((item) => item.id === id);
-  if (index === -1) return false;
-  items.splice(index, 1);
-  writeAll(items);
-  return true;
+  const result = db.prepare("DELETE FROM equipment WHERE id = ?").run(id);
+  return result.changes > 0;
 }
 
-module.exports = { list, get, create, update, remove, DATA_FILE };
+module.exports = { list, get, create, update, remove };
