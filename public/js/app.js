@@ -1147,6 +1147,7 @@ class PlantBuilderApp {
       const conn = this.connectors.get(activeSelection.id);
       if (!conn) return;
       conn.style = { ...defaultLineStyle(), ...(conn.style || {}) };
+      const routingStyle = conn.routing?.style === "angled" ? "angled" : "orthogonal";
       content.className = "";
       content.innerHTML = `
         <div class="inspector-header">
@@ -1155,10 +1156,22 @@ class PlantBuilderApp {
             <div class="inspector-model">${escapeHtml(this.boxLabel(conn.from))} &rarr; ${escapeHtml(this.boxLabel(conn.to))}</div>
           </div>
         </div>
+        <div class="style-panel">
+          <div class="style-panel-label">Routing</div>
+          <div class="style-row">
+            <select id="routing-style" title="Routing style">
+              <option value="orthogonal"${routingStyle === "orthogonal" ? " selected" : ""}>Orthogonal (right-angle)</option>
+              <option value="angled"${routingStyle === "angled" ? " selected" : ""}>Angled (diagonal, 45° snap)</option>
+            </select>
+          </div>
+        </div>
         ${this.buildStylePanelHtml(conn.style)}
         <button id="inspector-reverse" class="inspector-secondary-btn">Reverse direction</button>
         <button id="inspector-delete" class="danger">Delete connector</button>
       `;
+      document.getElementById("routing-style").addEventListener("change", (e) => {
+        this.setConnectorRoutingStyle(conn, e.target.value);
+      });
       this.bindStylePanel(content, (partial) => {
         conn.style = { ...conn.style, ...partial };
         this.renderConnectors();
@@ -1587,7 +1600,7 @@ class PlantBuilderApp {
       from: fromId,
       to: toId,
       style: defaultLineStyle(),
-      routing: { mode: "auto", points: [] },
+      routing: { mode: "auto", style: "orthogonal", points: [] },
       label: null,
     });
     this.selectOne("connector", id);
@@ -1599,22 +1612,27 @@ class PlantBuilderApp {
     return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
   }
 
-  // ---------- Orthogonal connector routing ----------
+  // ---------- Connector routing ----------
   //
-  // Two routing modes per connector (conn.routing.mode):
-  //   "auto"   -- pick the exit/entry side on each box from the sign of
-  //               dx/dy between their centers, connect with a Manhattan
-  //               path (straight if the anchors line up, one Z-bend
-  //               through the midpoint otherwise). Recomputed from live
-  //               box positions every render, so moving either end
-  //               reroutes automatically -- nothing to go stale.
-  //   "manual" -- conn.routing.points is the actual path (world coords,
-  //               grid-snapped), set once a user drags a segment or adds
-  //               a waypoint. The two ends still track their boxes (the
-  //               first/last point are overwritten with the current
-  //               anchor each render); everything in between is exactly
-  //               what the user shaped. "Reset Route" clears it back to
-  //               "auto".
+  // Two independent axes per connector (conn.routing):
+  //   .mode  "auto"   -- recomputed from live box positions every render;
+  //                      nothing to go stale.
+  //          "manual" -- conn.routing.points is the actual path (world
+  //                      coords), set once a user drags a bend or adds a
+  //                      waypoint. The two ends still track their boxes
+  //                      (first/last point overwritten with the current
+  //                      anchor each render); everything in between is
+  //                      exactly what the user shaped. "Reset Route"
+  //                      clears it back to "auto".
+  //   .style "orthogonal" (default) -- Manhattan path (straight if the
+  //                      anchors line up, one Z-bend through the midpoint
+  //                      otherwise); manual bends drag along one axis at
+  //                      a time via segment-midpoint handles.
+  //          "angled"  -- a direct point-to-point line by default;
+  //                      manual bends are free vertex handles that snap
+  //                      to the nearest 45° ray from the previous point
+  //                      (Alt disables the snap), for hand-routed
+  //                      diagonal runs.
 
   anchorPoint(box, side) {
     const cx = box.x + box.width / 2;
@@ -1655,18 +1673,32 @@ class PlantBuilderApp {
     return [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2];
   }
 
+  // Direct point-to-point path for angled routing: each end anchors to
+  // wherever its box boundary crosses the ray toward the other end,
+  // reusing the same boundary-intersection math the freeform Line tool's
+  // magnet-snap uses (see nodeAnchor below).
+  computeAngledPath(a, b) {
+    return [this.nodeAnchor(a, b), this.nodeAnchor(b, a)];
+  }
+
   // The path actually used for rendering/interaction/crossing-detection:
   // auto-computed, or the user's manual points with the two ends snapped
   // to wherever the connected boxes currently are.
   getConnectorPoints(conn, from, to) {
+    const style = conn.routing?.style === "angled" ? "angled" : "orthogonal";
     if (conn.routing && conn.routing.mode === "manual" && conn.routing.points.length >= 2) {
       const pts = conn.routing.points.map((p) => ({ ...p }));
-      const { aSide, bSide } = this.bestAnchorSides(from, to);
-      pts[0] = this.anchorPoint(from, aSide);
-      pts[pts.length - 1] = this.anchorPoint(to, bSide);
+      if (style === "angled") {
+        pts[0] = this.boxAnchorTowardPoint(from, pts[1]);
+        pts[pts.length - 1] = this.boxAnchorTowardPoint(to, pts[pts.length - 2]);
+      } else {
+        const { aSide, bSide } = this.bestAnchorSides(from, to);
+        pts[0] = this.anchorPoint(from, aSide);
+        pts[pts.length - 1] = this.anchorPoint(to, bSide);
+      }
       return pts;
     }
-    return this.computeOrthogonalPath(from, to);
+    return style === "angled" ? this.computeAngledPath(from, to) : this.computeOrthogonalPath(from, to);
   }
 
   // Freezes the connector's current points into routing.points (a fresh
@@ -1674,37 +1706,58 @@ class PlantBuilderApp {
   // manual mode -- the entry point for both segment-dragging and
   // waypoint-adding.
   commitManualRoute(conn, points) {
-    conn.routing = { mode: "manual", points: points.map((p) => ({ ...p })) };
+    const style = conn.routing?.style === "angled" ? "angled" : "orthogonal";
+    conn.routing = { mode: "manual", style, points: points.map((p) => ({ ...p })) };
   }
 
   resetConnectorRoute(conn) {
-    conn.routing = { mode: "auto", points: [] };
+    const style = conn.routing?.style === "angled" ? "angled" : "orthogonal";
+    conn.routing = { mode: "auto", style, points: [] };
+    this.render();
+    this.pushHistory();
+  }
+
+  // Flips between Manhattan and direct/diagonal routing, discarding any
+  // manual bends (they were shaped for the old geometry and would look
+  // arbitrary carried over) -- same "start clean" behavior as Reset Route.
+  setConnectorRoutingStyle(conn, style) {
+    conn.routing = { mode: "auto", style, points: [] };
     this.render();
     this.pushHistory();
   }
 
   // Splices a new bend into the path via the clicked world point: finds
-  // the nearest existing segment, then connects to the click point with
-  // an orthogonal one-bend detour on either side (skipped where already
-  // aligned), same geometry as the auto-router uses.
+  // the nearest existing segment, then connects to the click point. In
+  // orthogonal mode that's a one-bend detour on either side (skipped
+  // where already aligned), same geometry as the auto-router uses; in
+  // angled mode the point is inserted directly (snapped to the nearest
+  // 45° ray from the segment's start), since a straight run needs no
+  // detour.
   addWaypointAt(conn, from, to, clickPoint) {
     const points = this.getConnectorPoints(conn, from, to);
+    const style = conn.routing?.style === "angled" ? "angled" : "orthogonal";
     let bestIndex = 0;
     let bestDist = Infinity;
     for (let i = 0; i < points.length - 1; i++) {
       const d = distanceToSegment(clickPoint, points[i], points[i + 1]);
       if (d < bestDist) { bestDist = d; bestIndex = i; }
     }
-    const via = { x: snapToGrid(clickPoint.x), y: snapToGrid(clickPoint.y) };
-    const before = orthogonalBendVia(points[bestIndex], via);
-    const after = orthogonalBendVia(via, points[bestIndex + 1]);
-    const newPoints = [
-      ...points.slice(0, bestIndex + 1),
-      ...before,
-      via,
-      ...after,
-      ...points.slice(bestIndex + 1),
-    ];
+    let newPoints;
+    if (style === "angled") {
+      const via = snapAngle45(points[bestIndex], clickPoint);
+      newPoints = [...points.slice(0, bestIndex + 1), via, ...points.slice(bestIndex + 1)];
+    } else {
+      const via = { x: snapToGrid(clickPoint.x), y: snapToGrid(clickPoint.y) };
+      const before = orthogonalBendVia(points[bestIndex], via);
+      const after = orthogonalBendVia(via, points[bestIndex + 1]);
+      newPoints = [
+        ...points.slice(0, bestIndex + 1),
+        ...before,
+        via,
+        ...after,
+        ...points.slice(bestIndex + 1),
+      ];
+    }
     this.commitManualRoute(conn, newPoints);
     this.render();
     this.pushHistory();
@@ -1731,6 +1784,35 @@ class PlantBuilderApp {
       const snapped = ev.altKey ? raw : snapToGrid(raw);
       if (vertical) { pts[segIndex].x = snapped; pts[segIndex + 1].x = snapped; }
       else { pts[segIndex].y = snapped; pts[segIndex + 1].y = snapped; }
+      this.renderConnectors();
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      this.pushHistory();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // Angled routing's equivalent of startSegmentDrag: a free 2D handle at
+  // an interior bend point (not the box-anchored ends), snapped to the
+  // nearest 45° ray from the previous point as you drag -- Alt for a
+  // free, unsnapped angle.
+  startVertexDrag(e, conn, from, to, pointIndex) {
+    e.stopPropagation();
+    e.preventDefault();
+    this.selectOne("connector", conn.id);
+
+    const points = this.getConnectorPoints(conn, from, to);
+    this.commitManualRoute(conn, points);
+    const pts = conn.routing.points;
+    const anchor = pts[pointIndex - 1];
+
+    const onMove = (ev) => {
+      const world = this.clientToWorld(ev.clientX, ev.clientY);
+      const snapped = ev.altKey ? world : snapAngle45(anchor, world);
+      pts[pointIndex] = snapped;
       this.renderConnectors();
     };
     const onUp = () => {
@@ -1955,25 +2037,40 @@ class PlantBuilderApp {
         svg.appendChild(text);
       }
 
-      // Segment-drag grips: only shown on the selected connector, one per
-      // interior segment (both endpoints interior bends, not the boxes'
-      // fixed anchor points) -- exactly the segments draw.io lets you
-      // grab and slide.
+      // Route-edit handles: only shown on the selected connector.
+      // Orthogonal -- one per interior segment (both endpoints interior
+      // bends, not the boxes' fixed anchor points), draggable along
+      // whichever axis that segment runs, exactly the segments draw.io
+      // lets you grab and slide. Angled -- one free 2D handle per interior
+      // bend point instead, since there's no fixed axis to slide along.
       if (this.selection.length === 1 && this.selection[0].type === "connector" && this.selection[0].id === conn.id) {
-        for (let i = 1; i < points.length - 2; i++) {
-          const p1 = points[i];
-          const p2 = points[i + 1];
-          const mx = (p1.x + p2.x) / 2;
-          const my = (p1.y + p2.y) / 2;
-          const vertical = Math.abs(p1.x - p2.x) < 0.5;
-          const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          handle.setAttribute("class", `segment-handle ${vertical ? "segment-handle-v" : "segment-handle-h"}`);
-          handle.setAttribute("x", mx - (vertical ? 5 : 8));
-          handle.setAttribute("y", my - (vertical ? 8 : 5));
-          handle.setAttribute("width", vertical ? 10 : 16);
-          handle.setAttribute("height", vertical ? 16 : 10);
-          handle.addEventListener("mousedown", (e) => this.startSegmentDrag(e, conn, from, to, i));
-          svg.appendChild(handle);
+        const routingStyle = conn.routing?.style === "angled" ? "angled" : "orthogonal";
+        if (routingStyle === "angled") {
+          for (let i = 1; i < points.length - 1; i++) {
+            const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            handle.setAttribute("class", "vertex-handle");
+            handle.setAttribute("cx", points[i].x);
+            handle.setAttribute("cy", points[i].y);
+            handle.setAttribute("r", 5);
+            handle.addEventListener("mousedown", (e) => this.startVertexDrag(e, conn, from, to, i));
+            svg.appendChild(handle);
+          }
+        } else {
+          for (let i = 1; i < points.length - 2; i++) {
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const mx = (p1.x + p2.x) / 2;
+            const my = (p1.y + p2.y) / 2;
+            const vertical = Math.abs(p1.x - p2.x) < 0.5;
+            const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            handle.setAttribute("class", `segment-handle ${vertical ? "segment-handle-v" : "segment-handle-h"}`);
+            handle.setAttribute("x", mx - (vertical ? 5 : 8));
+            handle.setAttribute("y", my - (vertical ? 8 : 5));
+            handle.setAttribute("width", vertical ? 10 : 16);
+            handle.setAttribute("height", vertical ? 16 : 10);
+            handle.addEventListener("mousedown", (e) => this.startSegmentDrag(e, conn, from, to, i));
+            svg.appendChild(handle);
+          }
         }
       }
     }
@@ -1985,13 +2082,20 @@ class PlantBuilderApp {
   // side of a node/shape is closest to the dragged endpoint, independent
   // of the orthogonal auto-routing above).
   nodeAnchor(node, towardsNode) {
-    const { x: cx, y: cy } = this.nodeCenter(node);
-    const { x: tcx, y: tcy } = this.nodeCenter(towardsNode);
-    const dx = tcx - cx;
-    const dy = tcy - cy;
+    return this.boxAnchorTowardPoint(node, this.nodeCenter(towardsNode));
+  }
+
+  // Same boundary-intersection math, but aimed at an arbitrary world
+  // point rather than another box's center -- used by angled routing to
+  // anchor a connector's end toward its first/last manual bend point
+  // (which has no width/height of its own to take a center from).
+  boxAnchorTowardPoint(box, point) {
+    const { x: cx, y: cy } = this.nodeCenter(box);
+    const dx = point.x - cx;
+    const dy = point.y - cy;
     const angle = Math.atan2(dy, dx);
-    const halfW = node.width / 2;
-    const halfH = node.height / 2;
+    const halfW = box.width / 2;
+    const halfH = box.height / 2;
     const scale = Math.min(
       Math.abs(halfW / Math.cos(angle) || Infinity),
       Math.abs(halfH / Math.sin(angle) || Infinity)
@@ -2356,7 +2460,7 @@ class PlantBuilderApp {
     for (const c of layout.connectors) {
       const { style: cStyle, ...rest } = c;
       this.connectors.set(c.id, {
-        routing: { mode: "auto", points: [] },
+        routing: { mode: "auto", style: "orthogonal", points: [] },
         label: null,
         ...rest,
         style: { ...defaultLineStyle(), ...(cStyle || {}) },
@@ -2550,6 +2654,18 @@ function clamp(value, min, max) {
 
 function snapToGrid(value) {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
+}
+
+// Snaps rawPoint onto the nearest 45-degree ray from `from`, preserving
+// the dragged distance (Phase 3c angled routing).
+function snapAngle45(from, rawPoint) {
+  const dx = rawPoint.x - from.x;
+  const dy = rawPoint.y - from.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 0.01) return { x: rawPoint.x, y: rawPoint.y };
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  return { x: from.x + Math.cos(angle) * dist, y: from.y + Math.sin(angle) * dist };
 }
 
 function average(values) {

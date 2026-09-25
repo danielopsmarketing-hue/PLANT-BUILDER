@@ -394,6 +394,17 @@ body {
 .segment-handle-h { cursor: ns-resize; }
 .segment-handle:hover { fill: var(--brand-accent); }
 
+/* Angled-routing equivalent: a free 2D handle at each interior bend
+   point instead of an axis-constrained segment grip. */
+.vertex-handle {
+  fill: #fff;
+  stroke: var(--brand-accent);
+  stroke-width: 1.5;
+  cursor: move;
+  pointer-events: all;
+}
+.vertex-handle:hover { fill: var(--brand-accent); }
+
 .connector-label {
   font-size: 11px;
   font-weight: 600;
