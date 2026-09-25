@@ -158,9 +158,36 @@ function update(id, data) {
   return updated;
 }
 
+// Relevance-scored search over the catalog -- the one tool the AI plant-
+// input pipeline (Phase 5) is allowed to use to turn a natural-language
+// equipment mention ("a jaw crusher", "screener") into real catalog
+// item(s), so it can never invent equipment that isn't actually stocked.
+// Small catalog (tens to low hundreds of rows), so plain in-memory
+// scoring over list() is simpler and plenty fast -- no need for a SQL
+// LIKE/FTS query here.
+function search(query, { category, limit = 8 } = {}) {
+  const terms = (query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = list()
+    .filter((item) => !category || item.category === category)
+    .map((item) => {
+      const name = item.name.toLowerCase();
+      const model = item.model.toLowerCase();
+      let score = 0;
+      for (const term of terms) {
+        if (name.includes(term)) score += 2;
+        if (model.includes(term)) score += 1;
+        if (item.category.includes(term)) score += 1;
+      }
+      return { item, score };
+    })
+    .filter((entry) => terms.length === 0 || entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name));
+  return scored.slice(0, limit).map((entry) => entry.item);
+}
+
 function remove(id) {
   const result = db.prepare("DELETE FROM equipment WHERE id = ?").run(id);
   return result.changes > 0;
 }
 
-module.exports = { list, get, create, update, remove };
+module.exports = { list, get, create, update, remove, search };

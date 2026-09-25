@@ -7,15 +7,23 @@
 // Make/Model, no capacity/power/dimension data. Don't invent numbers for a
 // sales tool; add real specs via the admin form once available.
 
+// `flowStage` is a rough "where this usually sits in a material flow"
+// rank (lower = earlier), used by the AI plant-input pipeline (Phase 5)
+// to auto-position and auto-sequence equipment it identifies from a
+// description -- a hint for default layout/connection order, not an
+// enforced rule; nothing stops a user from wiring things differently.
+// Conveying is deliberately fractional since it can legitimately sit
+// between any two stages. Array order is unchanged from before (it
+// drives the catalog panel's category grouping order in the UI).
 const CATEGORIES = [
-  { id: "feeding", label: "Feeding" },
-  { id: "crushing", label: "Crushing" },
-  { id: "screening", label: "Screening" },
-  { id: "conveying", label: "Conveying" },
-  { id: "stockpiling", label: "Stockpiling" },
-  { id: "washing", label: "Washing" },
-  { id: "shredding", label: "Shredding & Grinding" },
-  { id: "mixing", label: "Mixing" },
+  { id: "feeding", label: "Feeding", flowStage: 0 },
+  { id: "crushing", label: "Crushing", flowStage: 1 },
+  { id: "screening", label: "Screening", flowStage: 2 },
+  { id: "conveying", label: "Conveying", flowStage: 1.5 },
+  { id: "stockpiling", label: "Stockpiling", flowStage: 3 },
+  { id: "washing", label: "Washing", flowStage: 2 },
+  { id: "shredding", label: "Shredding & Grinding", flowStage: 1 },
+  { id: "mixing", label: "Mixing", flowStage: 2 },
 ];
 
 const EQUIPMENT = [

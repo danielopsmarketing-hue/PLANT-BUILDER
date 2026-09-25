@@ -221,6 +221,19 @@ app.get("/api/equipment", (req, res) => {
   res.json(db.list());
 });
 
+// Placed before /api/equipment/:id so the literal "search" path isn't
+// swallowed by the :id param route. The one lookup tool the AI plant-input
+// pipeline (Phase 5) is allowed to use -- it can only place equipment this
+// returns, never invent something not in the catalog.
+app.get("/api/equipment/search", auth.requireAuth, (req, res) => {
+  const { q, category, limit } = req.query;
+  const parsedLimit = Number.parseInt(limit, 10);
+  res.json(db.search(q, {
+    category: category || undefined,
+    limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 25) : undefined,
+  }));
+});
+
 app.get("/api/equipment/:id", (req, res) => {
   const item = db.get(req.params.id);
   if (!item) return res.status(404).json({ error: "Not found" });
