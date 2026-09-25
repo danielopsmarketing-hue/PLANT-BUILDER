@@ -32,7 +32,22 @@
 }
 .auth-error.hidden { display: none; }
 
-.auth-submit { width: 100%; margin-top: 4px; }
+.auth-submit {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px;
+  border: none;
+  border-radius: 6px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.auth-submit:hover { opacity: 0.92; }
 
 /* ---------- Topbar user badge (Builder / Admin / management pages) ---------- */
 

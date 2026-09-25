@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPS Group Plant Builder — Users</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/admin.css" />
+<link rel="stylesheet" href="css/auth.css" />
+</head>
+<body class="admin-body">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">OPS</div>
+      <div class="brand-text">
+        <div class="brand-name">OPS Group</div>
+        <div class="brand-tagline">Users</div>
+      </div>
+    </div>
+
+    <nav class="main-nav">
+      <a href="index.html">Builder</a>
+      <a href="admin.html">Equipment Library</a>
+      <a href="users.html" class="active">Users</a>
+    </nav>
+
+    <div class="toolbar">
+      <button id="btn-invite-user" class="primary">+ Invite User</button>
+    </div>
+
+    <div id="user-badge" class="user-badge"></div>
+  </header>
+
+  <main class="admin-main">
+    <p class="admin-intro">
+      Everyone who can sign in to the Plant Builder. Admins manage the equipment catalog and other
+      accounts; managers and staff use the Builder itself. Inviting someone creates an account in
+      "Invited" status and gives you a one-time setup link to send them — there's no email sending
+      yet, so copy the link and share it however you normally would.
+    </p>
+
+    <div id="admin-status" class="admin-status hidden"></div>
+
+    <div id="invite-link-panel" class="invite-link-panel hidden">
+      <div class="invite-link-label">Invitation link for <span id="invite-link-name"></span> — this is shown once, so copy it now:</div>
+      <div class="invite-link-row">
+        <input type="text" id="invite-link-value" readonly />
+        <button type="button" id="btn-copy-invite-link">Copy</button>
+      </div>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Last login</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="users-table-body">
+        <tr><td colspan="6" class="admin-loading">Loading users&hellip;</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <div id="invite-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3>Invite User</h3>
+      <form id="invite-form">
+        <div class="field-row two-col">
+          <div>
+            <label for="field-first-name">First name</label>
+            <input type="text" id="field-first-name" required />
+          </div>
+          <div>
+            <label for="field-last-name">Last name</label>
+            <input type="text" id="field-last-name" required />
+          </div>
+        </div>
+        <div class="field-row">
+          <label for="field-email">Email</label>
+          <input type="email" id="field-email" required />
+        </div>
+        <div class="field-row">
+          <label for="field-role">Role</label>
+          <select id="field-role">
+            <option value="staff">Staff</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="invite-modal-cancel">Cancel</button>
+          <button type="submit" class="primary">Send Invitation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireLogin, renderUserBadge } from "./js/auth-guard.js";
+    const user = await requireLogin(); // redirects to /login.html if not authenticated
+    if (user) {
+      if (user.role !== "admin") {
+        document.body.innerHTML = `
+          <div class="auth-body">
+            <div class="auth-card">
+              <h1 class="auth-title">Access denied</h1>
+              <p class="auth-subtitle">User management is admin-only. You're signed in as ${user.firstName} (${user.role}).</p>
+              <a class="auth-submit" href="/index.html">Back to the Builder</a>
+            </div>
+          </div>`;
+      } else {
+        renderUserBadge(document.getElementById("user-badge"), user);
+        window.__currentUserId = user.id; // so the table can disable "change your own role/deactivate yourself"
+        await import("./js/users.js");
+      }
+    }
+  </script>
+</body>
+</html>

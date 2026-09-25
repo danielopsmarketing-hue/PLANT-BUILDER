@@ -42,18 +42,18 @@ existing JSON-file deployment upgrades.
 ### Protecting the admin page
 
 The Equipment Library page and every catalog-editing request (add/edit/
-delete, image upload) are gated behind HTTP Basic Auth — but only when
-`ADMIN_USERNAME` and `ADMIN_PASSWORD` env vars are set. Unset (the local
-default), there's no login prompt at all, so local dev stays frictionless.
-**Before deploying anywhere reachable from outside your machine, set both**,
-or anyone with the URL can rewrite or delete the whole catalog:
+delete, image upload) require a logged-in **admin** account — real
+per-user accounts (see "Accounts & authentication" below), not the old
+shared-password HTTP Basic Auth this replaced as of Phase 6a. A manager
+or staff account gets a 403 from the write routes even if they know the
+URL; the page itself shows "Access denied" for anyone logged in who
+isn't an admin, and redirects to `/login.html` for anyone not logged in
+at all — same pattern as the Builder.
 
-```
-ADMIN_USERNAME=youradminname ADMIN_PASSWORD=a-real-password npm start
-```
-
-The builder itself (`index.html`) and the read-only catalog API stay public
-either way — reps don't need a login to build layouts.
+The builder itself (`index.html`) requires login too (any role), and the
+read-only catalog API (`GET /api/equipment`, `/api/categories`) stays
+public either way, so a saved layout's equipment icons still resolve
+without a session.
 
 ### What it does
 
@@ -556,6 +556,49 @@ Confirm, regenerating replacing rather than stacking a draft) — plus the
 full accumulated regression suite from every earlier phase, re-run green
 after each of 5a/5b/5c.
 
+## Staff management (Phase 6a)
+
+**The admin.html/equipment Basic Auth gate is gone.** `admin.html` and
+the equipment write routes now run on the real per-user account system
+(Phase 2b) — `requireAuth` + `requireRole("admin")`, same as
+`/api/users`. `ADMIN_USERNAME`/`ADMIN_PASSWORD` are no longer read
+anywhere; the one enforcement mechanism for the whole app is real
+accounts, not two systems running in parallel. See "Protecting the admin
+page" above.
+
+**New `/users.html`** (admin-only, same client-side `requireLogin()` +
+server-side `requireRole("admin")` pattern as `admin.html`): lists every
+account, lets an admin invite a new one (the invite response now returns
+the actual `/set-password.html?token=...` link the invitee visits, fixed
+from an earlier bug where it returned the raw API path instead), and
+change a user's role or active/inactive status inline. An admin's own
+row has its role select and deactivate button disabled client-side (the
+server's last-active-admin check is the real guard; this just avoids the
+confusing UX of locking yourself out mid-session). Deactivating
+immediately blocks further login attempts — already true since Phase
+2b's session-revocation design, now reachable from a UI instead of only
+a direct API call.
+
+**A second instance of the Phase 2e bootstrap-order bug** turned up
+building this: `admin.js` and `users.js` both booted on
+`DOMContentLoaded`, which — now that both pages gate loading them behind
+an async `requireLogin()`/role check — has usually already fired by the
+time the listener registers. Same fix as app.js: check
+`document.readyState` and boot immediately if the document isn't still
+`loading`.
+
+**Tested:** a 24-point Playwright pass covering the admin.html/users.html
+login+role gate (redirect when logged out, Access Denied for a non-admin,
+full access for an admin), inviting a user, following the real
+invitation link end-to-end in a separate browser context to set a
+password and land in the Builder logged in, changing role, deactivating
+(with the self-protection disabled state verified), a deactivated
+account being rejected on its next login attempt, and server-side 403s
+on direct API calls from a non-admin session — plus a 5-point pass
+confirming equipment add/edit/delete still work through the new session-
+based gate, and the full accumulated regression suite from every earlier
+phase still green.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now
@@ -575,9 +618,12 @@ which would silently erase the catalog.
    or Railway's shell to confirm the exact absolute path in the running
    container before finalizing the mount path, since it depends on how
    Railway lays out the root-directory build.
-5. In **Variables**, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (see above).
-   Railway sets `PORT` automatically — the app already reads
-   `process.env.PORT`, no change needed.
+5. In **Variables**, optionally set `BOOTSTRAP_ADMIN_EMAIL` and
+   `BOOTSTRAP_ADMIN_PASSWORD` to choose the first admin account's
+   credentials (see "Accounts & authentication" below) — leave them
+   unset and the server generates one and prints it to the deploy logs
+   on first boot. Railway sets `PORT` automatically — the app already
+   reads `process.env.PORT`, no change needed.
 6. Deploy. Railway gives you a `*.up.railway.app` URL — the builder is at
    `/`, the catalog admin at `/admin.html`.
 
@@ -620,7 +666,7 @@ near-term backend pieces:
 - **Which LLM provider for the real AI plant-input feature (Phase 5d)** —
   Anthropic, OpenAI, or another provider, plus confirmation that
   supplying/storing an API key (as a Railway environment variable, same
-  as `ADMIN_USERNAME`/`BOOTSTRAP_ADMIN_PASSWORD`) is okay. Nothing calls
+  as `BOOTSTRAP_ADMIN_PASSWORD`) is okay. Nothing calls
   out to any provider today (see "AI plant input" above) — this is the
   one thing blocking that from moving past its current stub.
 

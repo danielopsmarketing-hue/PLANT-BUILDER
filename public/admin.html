@@ -6,6 +6,7 @@
 <title>OPS Group Plant Builder — Admin</title>
 <link rel="stylesheet" href="css/styles.css" />
 <link rel="stylesheet" href="css/admin.css" />
+<link rel="stylesheet" href="css/auth.css" />
 </head>
 <body class="admin-body">
   <header class="topbar">
@@ -25,6 +26,8 @@
     <div class="toolbar">
       <button id="btn-add-equipment" class="primary">+ Add Equipment</button>
     </div>
+
+    <div id="user-badge" class="user-badge"></div>
   </header>
 
   <main class="admin-main">
@@ -126,6 +129,24 @@
     </div>
   </div>
 
-  <script type="module" src="js/admin.js"></script>
+  <script type="module">
+    import { requireLogin, renderUserBadge } from "./js/auth-guard.js";
+    const user = await requireLogin(); // redirects to /login.html if not authenticated
+    if (user) {
+      if (user.role !== "admin") {
+        document.body.innerHTML = `
+          <div class="auth-body">
+            <div class="auth-card">
+              <h1 class="auth-title">Access denied</h1>
+              <p class="auth-subtitle">The Equipment Library is admin-only. You're signed in as ${user.firstName} (${user.role}).</p>
+              <a class="auth-submit" href="/index.html">Back to the Builder</a>
+            </div>
+          </div>`;
+      } else {
+        renderUserBadge(document.getElementById("user-badge"), user);
+        await import("./js/admin.js");
+      }
+    }
+  </script>
 </body>
 </html>

@@ -40,38 +40,8 @@ const upload = multer({
   },
 });
 
-// Guards the admin page and every catalog-editing request. No-op when
-// ADMIN_USERNAME/ADMIN_PASSWORD aren't set, so local dev needs no setup —
-// but set them before deploying anywhere public, or anyone with the URL
-// can rewrite or delete the whole catalog.
-function requireAdminAuth(req, res, next) {
-  const expectedUser = process.env.ADMIN_USERNAME;
-  const expectedPass = process.env.ADMIN_PASSWORD;
-  if (!expectedUser || !expectedPass) return next();
-
-  const header = req.headers.authorization || "";
-  const [scheme, encoded] = header.split(" ");
-  if (scheme === "Basic" && encoded) {
-    const decoded = Buffer.from(encoded, "base64").toString("utf-8");
-    const sep = decoded.indexOf(":");
-    const user = sep === -1 ? decoded : decoded.slice(0, sep);
-    const pass = sep === -1 ? "" : decoded.slice(sep + 1);
-    if (safeEqual(user, expectedUser) && safeEqual(pass, expectedPass)) return next();
-  }
-  res.set("WWW-Authenticate", 'Basic realm="Plant Builder Admin"');
-  res.status(401).send("Authentication required.");
-}
-
-function safeEqual(a, b) {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
 const app = express();
 app.use(express.json());
-app.use("/admin.html", requireAdminAuth);
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/uploads", express.static(UPLOADS_DIR));
 
@@ -101,13 +71,11 @@ app.get("/api/categories", (req, res) => {
 
 // ---------- Auth ----------
 //
-// Independent of the admin.html/equipment Basic Auth gate above -- that
-// stays as-is for now (see requireAdminAuth). This is the real per-user
-// system (Phase 2b): not yet wired into any route as the enforcement
-// mechanism, deliberately -- flipping equipment admin over to it, and
-// building the login/invitation-setup UI, is follow-up work (Phase 6a)
-// so it isn't done ahead of schedule here. What's below is proven via
-// direct API calls instead.
+// The real per-user account system (Phase 2b). admin.html and the
+// equipment write routes below now run on this (requireAuth +
+// requireRole("admin")) instead of the old shared-password HTTP Basic
+// Auth gate, which is gone as of Phase 6a -- one enforcement mechanism
+// for the whole app, not two running in parallel indefinitely.
 
 app.post("/api/auth/login", (req, res) => {
   const { email, password } = req.body || {};
@@ -162,7 +130,11 @@ app.post("/api/users", auth.requireAuth, auth.requireRole("admin"), (req, res) =
   const { user, rawInvitationToken } = auth.inviteUser({ firstName, lastName, email, role });
   res.status(201).json({
     user: auth.toSafeUser(user),
-    invitationLink: `/api/auth/invitation/${rawInvitationToken}`,
+    // The actual page the invitee visits (set-password.js calls the
+    // /api/auth/invitation/:token API itself) -- an admin copies this
+    // and sends it manually, per this phase's explicit "no transactional
+    // email yet" scope.
+    invitationLink: `${req.protocol}://${req.get("host")}/set-password.html?token=${rawInvitationToken}`,
   });
 });
 
@@ -254,7 +226,7 @@ app.post("/api/ai/plan", auth.requireAuth, (req, res) => {
   res.json(ai.planFromPrompt(prompt));
 });
 
-app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) => {
+app.post("/api/equipment", auth.requireAuth, auth.requireRole("admin"), upload.single("image"), (req, res) => {
   const { name, model, category, icon, brochureUrl, stockUrl } = req.body;
   if (!name || !category) {
     if (req.file) removeUploadedFile(req.file.filename);
@@ -273,7 +245,7 @@ app.post("/api/equipment", requireAdminAuth, upload.single("image"), (req, res) 
   res.status(201).json(item);
 });
 
-app.put("/api/equipment/:id", requireAdminAuth, upload.single("image"), (req, res) => {
+app.put("/api/equipment/:id", auth.requireAuth, auth.requireRole("admin"), upload.single("image"), (req, res) => {
   const existing = db.get(req.params.id);
   if (!existing) {
     if (req.file) removeUploadedFile(req.file.filename);
@@ -303,7 +275,7 @@ app.put("/api/equipment/:id", requireAdminAuth, upload.single("image"), (req, re
   res.json(updated);
 });
 
-app.delete("/api/equipment/:id", requireAdminAuth, (req, res) => {
+app.delete("/api/equipment/:id", auth.requireAuth, auth.requireRole("admin"), (req, res) => {
   const existing = db.get(req.params.id);
   if (!existing) return res.status(404).json({ error: "Not found" });
   if (existing.imagePath) removeUploadedFile(existing.imagePath);

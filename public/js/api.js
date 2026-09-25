@@ -31,3 +31,27 @@ export function updateEquipment(id, formData) {
 export function deleteEquipment(id) {
   return fetch(`${BASE}/equipment/${id}`, { method: "DELETE" }).then(handle);
 }
+
+// ---------- Users (admin-only, Phase 6a) ----------
+
+export function fetchUsers() {
+  return fetch(`${BASE}/users`, { credentials: "same-origin" }).then(handle);
+}
+
+export function inviteUser(data) {
+  return fetch(`${BASE}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(data),
+  }).then(handle);
+}
+
+export function updateUser(id, data) {
+  return fetch(`${BASE}/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(data),
+  }).then(handle);
+}

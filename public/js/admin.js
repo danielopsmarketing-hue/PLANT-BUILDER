@@ -256,6 +256,15 @@ function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, "&quot;");
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+function boot() {
   window.adminApp = new AdminApp();
-});
+}
+
+// admin.js is dynamically imported after an async login/role check, so
+// DOMContentLoaded may have already fired by the time this runs (same
+// bootstrap-order issue app.js hit in Phase 2e).
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}

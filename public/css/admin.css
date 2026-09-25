@@ -119,3 +119,54 @@
 .spec-row .remove-spec { font-size: 16px; color: var(--danger); padding: 0 6px; }
 
 #btn-add-spec { margin-top: 2px; }
+
+/* ---------- Users admin page (Phase 6a) ---------- */
+
+.invite-link-panel {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.invite-link-panel.hidden { display: none; }
+.invite-link-label { font-size: 12.5px; color: #065f46; margin-bottom: 6px; }
+.invite-link-row { display: flex; gap: 8px; }
+.invite-link-row input {
+  flex: 1;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12.5px;
+  font-family: monospace;
+  background: #fff;
+}
+.invite-link-row button {
+  padding: 7px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.role-select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.status-badge-active { background: #ecfdf5; color: #065f46; }
+.status-badge-invited { background: #fffbeb; color: #92400e; }
+.status-badge-inactive { background: #f1f2f4; color: var(--text-muted); }
