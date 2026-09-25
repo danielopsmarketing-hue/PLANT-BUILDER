@@ -1,6 +1,7 @@
 import { iconSvg, colorForCategory } from "./icons.js";
 import { listLayouts, saveLayout, loadLayout, deleteLayout } from "./storage.js";
 import { fetchCategories, fetchEquipment } from "./api.js";
+import { planSpecToCommands } from "./ai-plan.js";
 
 const DEFAULT_NODE_WIDTH = 196;
 const DEFAULT_NODE_HEIGHT = 130;
@@ -2457,8 +2458,14 @@ class PlantBuilderApp {
       case "addConnector":
         this.addConnector(command.from, command.to);
         return null;
-      case "addShape":
-        return this.addShape(command.kind, command.x, command.y);
+      case "addShape": {
+        const id = this.addShape(command.kind, command.x, command.y);
+        if (command.text !== undefined) {
+          const shape = this.shapes.get(id);
+          if (shape) shape.text = command.text;
+        }
+        return id;
+      }
       case "addLine":
         return this.addLine(command.x, command.y);
       case "addJunction":
@@ -2499,6 +2506,7 @@ class PlantBuilderApp {
   // can restore it exactly. Returns each command's own return value
   // (e.g. the new id for an "add*" command) in call order.
   applyCommandBatch(commands, { preview = false } = {}) {
+    if (commands.length === 0) return [];
     if (!preview) {
       this._pendingBatchSnapshot = null;
     } else if (!this._pendingBatchSnapshot) {
@@ -2537,6 +2545,49 @@ class PlantBuilderApp {
     const snap = this._pendingBatchSnapshot;
     this._pendingBatchSnapshot = null;
     this.restoreSnapshot(snap);
+  }
+
+  // Bounding box of whatever's already on the canvas, with no padding
+  // baked in (unlike computeNodeBounds, which is export-specific) -- or
+  // null for a blank canvas. Used by the AI plant-spec translator to
+  // place new equipment to the right of existing content instead of on
+  // top of it.
+  computeExistingContentBounds() {
+    if (this.nodes.size === 0 && this.shapes.size === 0 && this.junctions.size === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const box of [...this.nodes.values(), ...this.shapes.values(), ...this.junctions.values()]) {
+      minX = Math.min(minX, box.x);
+      minY = Math.min(minY, box.y);
+      maxX = Math.max(maxX, box.x + box.width);
+      maxY = Math.max(maxY, box.y + box.height);
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  // ---------- AI plant specification (Phase 5b) ----------
+  //
+  // Applies a structured plant specification (see ai-plan.js) as one
+  // previewable command batch: equipment first (so real node ids exist),
+  // then connections/notes built from those ids. Two applyCommandBatch
+  // calls, but since neither commits on its own (both preview:true) they
+  // still collapse into a single undo step on commitPendingBatch -- the
+  // preview/confirm flow Stream 1 calls for. Returns the translator's
+  // warnings (e.g. an unresolvable equipmentId) so the caller can surface
+  // them before the user confirms.
+  applyPlantSpec(spec, { preview = true } = {}) {
+    const { createCommands, buildFollowUpCommands, warnings } = planSpecToCommands(spec, {
+      equipmentById: this.equipmentById,
+      categories: this.categories,
+      existingBounds: this.computeExistingContentBounds(),
+    });
+
+    const createdIds = this.applyCommandBatch(createCommands, { preview });
+    const idsByRef = new Map(createCommands.map((cmd, i) => [cmd.ref, createdIds[i]]));
+    const followUpCommands = buildFollowUpCommands(idsByRef);
+    if (followUpCommands.length > 0) this.applyCommandBatch(followUpCommands, { preview });
+
+    if (createCommands.length > 0) this.setSelection(createCommands.map((cmd, i) => ({ type: "node", id: createdIds[i] })).filter((s) => s.id));
+    return { warnings, nodeCount: createCommands.length, connectorCount: followUpCommands.filter((c) => c.type === "addConnector").length };
   }
 
   // ---------- Autosave (Phase 2e) ----------
