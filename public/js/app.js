@@ -67,6 +67,8 @@ class PlantBuilderApp {
     this.searchTerm = "";
     this.spaceHeld = false;
     this._clipboard = null;
+    this._suppressHistory = false;
+    this._pendingBatchSnapshot = null;
 
     this.history = [];
     this.historyIndex = -1;
@@ -2420,6 +2422,10 @@ class PlantBuilderApp {
   }
 
   pushHistory() {
+    // Suppressed while a command-layer batch is applying (see
+    // applyCommandBatch below) so N commands collapse into one undo step
+    // instead of N.
+    if (this._suppressHistory) return;
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push(this.snapshot());
     this.historyIndex++;
@@ -2429,6 +2435,108 @@ class PlantBuilderApp {
     }
     this.updateHistoryButtons();
     this.scheduleAutosave();
+  }
+
+  // ---------- Command layer (Phase 4a/4b) ----------
+  //
+  // A structured, serializable way to express canvas mutations, so manual
+  // UI actions and future AI-driven actions (Phase 5) can share one
+  // execution path, one undo/redo history, and the same
+  // preview-then-confirm flow the AI panel needs. Each command is applied
+  // through the app's own existing mutation methods -- no parallel
+  // mutation logic to keep in sync -- with per-command history/render
+  // suppressed until the whole batch is either committed (one undo step,
+  // however many commands it contained -- Phase 4b's batching) or
+  // discarded (canvas rolled back to exactly how it was before the
+  // preview started).
+
+  applyCommand(command) {
+    switch (command.type) {
+      case "addNode":
+        return this.addNode(command.equipmentId, command.x, command.y);
+      case "addConnector":
+        this.addConnector(command.from, command.to);
+        return null;
+      case "addShape":
+        return this.addShape(command.kind, command.x, command.y);
+      case "addLine":
+        return this.addLine(command.x, command.y);
+      case "addJunction":
+        return this.addJunction(command.x, command.y);
+      case "deleteBox":
+        if (this.nodes.has(command.id)) this.deleteNode(command.id);
+        else if (this.shapes.has(command.id)) this.deleteShape(command.id);
+        else if (this.junctions.has(command.id)) this.deleteJunction(command.id);
+        return null;
+      case "deleteConnector":
+        this.deleteConnector(command.id);
+        return null;
+      case "moveBox": {
+        const box = this.getBox(command.id);
+        if (box) { box.x = command.x; box.y = command.y; }
+        return null;
+      }
+      case "setNodeNotes": {
+        const node = this.nodes.get(command.id);
+        if (node) node.notes = command.notes;
+        return null;
+      }
+      case "setConnectorLabel": {
+        const conn = this.connectors.get(command.id);
+        if (conn) conn.label = command.label;
+        return null;
+      }
+      default:
+        console.warn("applyCommand: unknown command type", command.type);
+        return null;
+    }
+  }
+
+  // Runs every command in the batch with history suppressed, then a
+  // single render. `preview: true` applies the mutations live (so the
+  // canvas actually shows the result) but leaves them uncommitted --
+  // snapshotting the pre-batch state on first use so discardPendingBatch
+  // can restore it exactly. Returns each command's own return value
+  // (e.g. the new id for an "add*" command) in call order.
+  applyCommandBatch(commands, { preview = false } = {}) {
+    if (!preview) {
+      this._pendingBatchSnapshot = null;
+    } else if (!this._pendingBatchSnapshot) {
+      this._pendingBatchSnapshot = this.snapshot();
+    }
+
+    this._suppressHistory = true;
+    const results = [];
+    try {
+      for (const command of commands) results.push(this.applyCommand(command));
+    } finally {
+      this._suppressHistory = false;
+    }
+    this.render();
+    if (!preview) this.pushHistory();
+    return results;
+  }
+
+  hasPendingBatch() {
+    return this._pendingBatchSnapshot !== null;
+  }
+
+  // Keeps the preview's changes and folds them into history as one undo
+  // step, whether the preview was one command or fifty.
+  commitPendingBatch() {
+    if (!this._pendingBatchSnapshot) return;
+    this._pendingBatchSnapshot = null;
+    this.pushHistory();
+  }
+
+  // Rolls the canvas back to exactly how it was before applyCommandBatch's
+  // first preview call in this round -- the preview never touched history,
+  // so this is a plain snapshot restore, not an undo.
+  discardPendingBatch() {
+    if (!this._pendingBatchSnapshot) return;
+    const snap = this._pendingBatchSnapshot;
+    this._pendingBatchSnapshot = null;
+    this.restoreSnapshot(snap);
   }
 
   // ---------- Autosave (Phase 2e) ----------
