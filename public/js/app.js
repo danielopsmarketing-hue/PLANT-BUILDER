@@ -19,6 +19,7 @@ const SHAPE_DEFAULTS = {
   stockpile: { width: 120, height: 100 },
 };
 const LINE_DEFAULT_LENGTH = 140;
+const JUNCTION_SIZE = 14; // small fixed-size box a connector can attach to, for explicit merge/branch points
 const GRID_SIZE = 24; // matches the visual canvas background grid
 const MAGNET_RADIUS = 14; // how close a line endpoint must be to a box edge to snap
 
@@ -56,6 +57,7 @@ class PlantBuilderApp {
     this.connectors = new Map();
     this.shapes = new Map(); // freeform rect/ellipse/note annotations, not tied to equipment
     this.lines = new Map(); // freeform lines/arrows, not tied to equipment nodes
+    this.junctions = new Map(); // explicit merge/branch points multiple connectors can share (Phase 3d)
     this.selection = []; // array of { type: 'node' | 'connector' | 'shape' | 'line', id } -- multi-select capable
     this.view = { scale: 1, panX: 40, panY: 40 };
     this.currentLayoutId = null;
@@ -257,6 +259,7 @@ class PlantBuilderApp {
         const ghostHtml = el.querySelector("svg").outerHTML;
         this.startPaletteDrag(e, ghostHtml, (x, y) => {
           if (kind === "line") this.addLine(x, y);
+          else if (kind === "junction") this.addJunction(x, y);
           else this.addShape(kind, x, y);
         });
       });
@@ -380,6 +383,9 @@ class PlantBuilderApp {
           }
           for (const shape of this.shapes.values()) {
             if (boxIntersectsRect(shape, minX, minY, maxX, maxY)) hits.push({ type: "shape", id: shape.id });
+          }
+          for (const junction of this.junctions.values()) {
+            if (boxIntersectsRect(junction, minX, minY, maxX, maxY)) hits.push({ type: "junction", id: junction.id });
           }
           if (rubberBand.additive) {
             const merged = [...this.selection];
@@ -525,11 +531,12 @@ class PlantBuilderApp {
     return id;
   }
 
-  // A "box" is anything a connector can attach to: an equipment node or a
-  // Tools-panel shape. Both have {id, x, y, width, height}, so connectors,
-  // magnets, and grid-snap all work the same way regardless of which.
+  // A "box" is anything a connector can attach to: an equipment node, a
+  // Tools-panel shape, or a junction. All three have {id, x, y, width,
+  // height}, so connectors, magnets, and grid-snap all work the same way
+  // regardless of which.
   getBox(id) {
-    return this.nodes.get(id) || this.shapes.get(id) || null;
+    return this.nodes.get(id) || this.shapes.get(id) || this.junctions.get(id) || null;
   }
 
   boxLabel(id) {
@@ -537,6 +544,7 @@ class PlantBuilderApp {
     if (node) return this.getEquipmentById(node.equipmentId)?.name || "?";
     const shape = this.shapes.get(id);
     if (shape) return { rect: "Rectangle", ellipse: "Ellipse", note: "Note", stockpile: "Stockpile" }[shape.kind] || "Shape";
+    if (this.junctions.has(id)) return "Junction";
     return "?";
   }
 
@@ -593,6 +601,7 @@ class PlantBuilderApp {
     const all = [
       ...Array.from(this.nodes.keys()).map((id) => ({ type: "node", id })),
       ...Array.from(this.shapes.keys()).map((id) => ({ type: "shape", id })),
+      ...Array.from(this.junctions.keys()).map((id) => ({ type: "junction", id })),
     ];
     this.setSelection(all);
   }
@@ -601,7 +610,7 @@ class PlantBuilderApp {
   // i.e. things align/distribute/duplicate/drag-as-group can act on.
   selectedBoxes() {
     return this.selection
-      .map((sel) => ((sel.type === "node" || sel.type === "shape") ? { sel, box: this.getBox(sel.id) } : null))
+      .map((sel) => ((sel.type === "node" || sel.type === "shape" || sel.type === "junction") ? { sel, box: this.getBox(sel.id) } : null))
       .filter((entry) => entry && entry.box);
   }
 
@@ -610,6 +619,7 @@ class PlantBuilderApp {
     for (const { type, id } of this.selection) {
       if (type === "node") this.deleteNode(id);
       else if (type === "shape") this.deleteShape(id);
+      else if (type === "junction") this.deleteJunction(id);
       else if (type === "line") this.deleteLine(id);
       else this.deleteConnector(id);
     }
@@ -649,6 +659,13 @@ class PlantBuilderApp {
         this.shapes.set(newId, { ...orig, id: newId, x: orig.x + offset, y: orig.y + offset });
         idMap.set(sel.id, newId);
         newSelection.push({ type: "shape", id: newId });
+      } else if (sel.type === "junction") {
+        const orig = this.junctions.get(sel.id);
+        if (!orig) continue;
+        const newId = `junction-${this.nextId++}`;
+        this.junctions.set(newId, { ...orig, id: newId, x: orig.x + offset, y: orig.y + offset });
+        idMap.set(sel.id, newId);
+        newSelection.push({ type: "junction", id: newId });
       }
     }
     for (const conn of Array.from(this.connectors.values())) {
@@ -791,8 +808,14 @@ class PlantBuilderApp {
 
   // ---------- Z-order (right-click context menu) ----------
 
+  mapForType(type) {
+    if (type === "node") return this.nodes;
+    if (type === "junction") return this.junctions;
+    return this.shapes;
+  }
+
   bringToFront(type, id) {
-    const map = type === "node" ? this.nodes : this.shapes;
+    const map = this.mapForType(type);
     const box = map.get(id);
     if (!box) return;
     map.delete(id);
@@ -802,7 +825,7 @@ class PlantBuilderApp {
   }
 
   sendToBack(type, id) {
-    const map = type === "node" ? this.nodes : this.shapes;
+    const map = this.mapForType(type);
     const box = map.get(id);
     if (!box) return;
     const entries = Array.from(map.entries()).filter(([k]) => k !== id);
@@ -832,7 +855,7 @@ class PlantBuilderApp {
 
   showContextMenu(clientX, clientY, type, id) {
     const items = [];
-    if (type === "node" || type === "shape") {
+    if (type === "node" || type === "shape" || type === "junction") {
       items.push({ label: "Duplicate", action: () => this.duplicateSelection() });
       items.push({ label: "Delete", action: () => this.deleteSelection() });
       items.push({ separator: true });
@@ -1122,6 +1145,24 @@ class PlantBuilderApp {
       });
       textarea.addEventListener("blur", () => this.pushHistory());
       document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
+    } else if (activeSelection.type === "junction") {
+      const junction = this.junctions.get(activeSelection.id);
+      if (!junction) return;
+      const connectedCount = Array.from(this.connectors.values()).filter(
+        (c) => c.from === junction.id || c.to === junction.id
+      ).length;
+      content.className = "";
+      content.innerHTML = `
+        <div class="inspector-header">
+          <div>
+            <div class="inspector-name">Junction</div>
+            <div class="inspector-model">An explicit merge/branch point -- ${connectedCount} connector${connectedCount === 1 ? "" : "s"} attached</div>
+          </div>
+        </div>
+        <p class="inspector-hint">Drag from its dots to attach another connector. Connectors that share a junction render as a solid point, not a crossing arc.</p>
+        <button id="inspector-delete" class="danger">Delete junction</button>
+      `;
+      document.getElementById("inspector-delete").addEventListener("click", () => this.deleteSelection());
     } else if (activeSelection.type === "line") {
       const line = this.lines.get(activeSelection.id);
       if (!line) return;
@@ -1273,6 +1314,9 @@ class PlantBuilderApp {
     for (const el of this.els.world.querySelectorAll(".shape")) {
       el.classList.toggle("selected", this.isSelected("shape", el.dataset.id));
     }
+    for (const el of this.els.world.querySelectorAll(".junction-node")) {
+      el.classList.toggle("selected", this.isSelected("junction", el.dataset.id));
+    }
     for (const el of this.els.svg.querySelectorAll(".connector-line:not(.free-line)")) {
       el.classList.toggle("selected", this.isSelected("connector", el.dataset.id));
     }
@@ -1286,10 +1330,11 @@ class PlantBuilderApp {
   render() {
     this.renderNodes();
     this.renderShapes();
+    this.renderJunctions();
     this.renderConnectors();
     this.renderInspector();
     this.els.emptyHint.style.display =
-      this.nodes.size === 0 && this.shapes.size === 0 && this.lines.size === 0 ? "block" : "none";
+      this.nodes.size === 0 && this.shapes.size === 0 && this.lines.size === 0 && this.junctions.size === 0 ? "block" : "none";
   }
 
   renderNodes() {
@@ -1355,7 +1400,7 @@ class PlantBuilderApp {
       .map((sel) => ({ sel, box: this.getBox(sel.id) }))
       .filter((g) => g.box);
     const starts = new Map(group.map((g) => [g.sel.id, { x: g.box.x, y: g.box.y }]));
-    const otherBoxes = [...this.nodes.values(), ...this.shapes.values()].filter(
+    const otherBoxes = [...this.nodes.values(), ...this.shapes.values(), ...this.junctions.values()].filter(
       (b) => !group.some((g) => g.box.id === b.id)
     );
 
@@ -1571,12 +1616,12 @@ class PlantBuilderApp {
   }
 
   setNodeHoverState(box, isTarget) {
-    const el = this.els.world.querySelector(`.node[data-id="${box.id}"], .shape[data-id="${box.id}"]`);
+    const el = this.els.world.querySelector(`.node[data-id="${box.id}"], .shape[data-id="${box.id}"], .junction-node[data-id="${box.id}"]`);
     if (el) el.classList.toggle("connect-target", isTarget);
   }
 
   nodeAtPoint(worldX, worldY, excludeId, margin = 0) {
-    for (const box of [...this.nodes.values(), ...this.shapes.values()]) {
+    for (const box of [...this.nodes.values(), ...this.shapes.values(), ...this.junctions.values()]) {
       if (box.id === excludeId) continue;
       if (
         worldX >= box.x - margin && worldX <= box.x + box.width + margin &&
@@ -2134,6 +2179,31 @@ class PlantBuilderApp {
     this.removeConnectorsFor(id);
   }
 
+  // A junction is a small fixed-size box multiple connectors can share as
+  // an endpoint -- an explicit "these lines meet/branch here" point, as
+  // opposed to two unrelated connectors whose paths just happen to cross
+  // (which stay a plain arc-hop "crossing", handled entirely by
+  // computeCrossingBridges below since they don't share an endpoint id).
+  addJunction(x, y) {
+    const id = `junction-${this.nextId++}`;
+    this.junctions.set(id, {
+      id,
+      x: snapToGrid(x - JUNCTION_SIZE / 2),
+      y: snapToGrid(y - JUNCTION_SIZE / 2),
+      width: JUNCTION_SIZE,
+      height: JUNCTION_SIZE,
+    });
+    this.selectOne("junction", id);
+    this.render();
+    this.pushHistory();
+    return id;
+  }
+
+  deleteJunction(id) {
+    this.junctions.delete(id);
+    this.removeConnectorsFor(id);
+  }
+
   addLine(x, y) {
     const id = `line-${this.nextId++}`;
     this.lines.set(id, {
@@ -2182,6 +2252,31 @@ class PlantBuilderApp {
         dot.addEventListener("mousedown", (e) => this.onConnectDotMouseDown(e, shape));
       }
       el.querySelector(".resize-handle").addEventListener("mousedown", (e) => this.onShapeResizeMouseDown(e, shape));
+      this.els.world.appendChild(el);
+    }
+    this.renderSelectionHighlight();
+  }
+
+  // A junction is just a small solid dot -- no text, no resize handle,
+  // fixed size -- but otherwise a full box: draggable, selectable, and a
+  // connect-dot ring so new connectors can originate from it.
+  renderJunctions() {
+    for (const el of Array.from(this.els.world.querySelectorAll(".junction-node"))) el.remove();
+
+    for (const junction of this.junctions.values()) {
+      const el = document.createElement("div");
+      el.className = "junction-node";
+      el.dataset.id = junction.id;
+      el.style.left = `${junction.x}px`;
+      el.style.top = `${junction.y}px`;
+      el.style.width = `${junction.width}px`;
+      el.style.height = `${junction.height}px`;
+      el.innerHTML = connectDotsHtml();
+      el.addEventListener("mousedown", (e) => this.startBoxDrag(e, "junction", junction));
+      el.addEventListener("contextmenu", (e) => this.onContextMenu(e, "junction", junction.id));
+      for (const dot of el.querySelectorAll(".connect-dot")) {
+        dot.addEventListener("mousedown", (e) => this.onConnectDotMouseDown(e, junction));
+      }
       this.els.world.appendChild(el);
     }
     this.renderSelectionHighlight();
@@ -2314,6 +2409,7 @@ class PlantBuilderApp {
       connectors: Array.from(this.connectors.values()).map((c) => ({ ...c })),
       shapes: Array.from(this.shapes.values()).map((s) => ({ ...s })),
       lines: Array.from(this.lines.values()).map((l) => ({ ...l })),
+      junctions: Array.from(this.junctions.values()).map((j) => ({ ...j })),
     };
   }
 
@@ -2361,6 +2457,7 @@ class PlantBuilderApp {
         connectors: Array.from(this.connectors.values()),
         shapes: Array.from(this.shapes.values()),
         lines: Array.from(this.lines.values()),
+        junctions: Array.from(this.junctions.values()),
       });
       this.setSaveStatus("Saved");
     } catch (err) {
@@ -2378,6 +2475,7 @@ class PlantBuilderApp {
     this.connectors = new Map(snap.connectors.map((c) => [c.id, { ...c }]));
     this.shapes = new Map((snap.shapes || []).map((s) => [s.id, { ...s }]));
     this.lines = new Map((snap.lines || []).map((l) => [l.id, { ...l }]));
+    this.junctions = new Map((snap.junctions || []).map((j) => [j.id, { ...j }]));
     this.selection = [];
     this.render();
     this.updateHistoryButtons();
@@ -2403,12 +2501,13 @@ class PlantBuilderApp {
   // ---------- Save / Load ----------
 
   newLayout() {
-    const hasContent = this.nodes.size > 0 || this.shapes.size > 0 || this.lines.size > 0;
+    const hasContent = this.nodes.size > 0 || this.shapes.size > 0 || this.lines.size > 0 || this.junctions.size > 0;
     if (hasContent && !confirm("Clear the current layout? Unsaved changes will be lost.")) return;
     this.nodes.clear();
     this.connectors.clear();
     this.shapes.clear();
     this.lines.clear();
+    this.junctions.clear();
     this.currentLayoutId = null;
     this.currentLayoutName = null;
     this.setSelection([]);
@@ -2428,6 +2527,7 @@ class PlantBuilderApp {
           connectors: Array.from(this.connectors.values()),
           shapes: Array.from(this.shapes.values()),
           lines: Array.from(this.lines.values()),
+          junctions: Array.from(this.junctions.values()),
         });
         this.currentLayoutName = name;
         this.setSaveStatus("Saved");
@@ -2450,6 +2550,7 @@ class PlantBuilderApp {
     this.connectors.clear();
     this.shapes.clear();
     this.lines.clear();
+    this.junctions.clear();
     for (const n of layout.nodes) {
       this.nodes.set(n.id, {
         width: DEFAULT_NODE_WIDTH,
@@ -2474,6 +2575,7 @@ class PlantBuilderApp {
       const { style: lStyle, ...rest } = l;
       this.lines.set(l.id, { ...rest, style: { ...defaultLineStyle(), ...(lStyle || {}) } });
     }
+    for (const j of layout.junctions || []) this.junctions.set(j.id, { ...j });
     this.currentLayoutId = layout.id;
     this.currentLayoutName = layout.name;
     this.setSaveStatus("Saved");
@@ -2572,6 +2674,10 @@ class PlantBuilderApp {
       grow(line.x1, line.y1);
       grow(line.x2, line.y2);
     }
+    for (const junction of this.junctions.values()) {
+      grow(junction.x, junction.y);
+      grow(junction.x + junction.width, junction.y + junction.height);
+    }
     const pad = 40;
     return { minX: minX - pad, minY: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
   }
@@ -2603,7 +2709,7 @@ class PlantBuilderApp {
     inner.style.transform = `translate(${-bounds.minX}px, ${-bounds.minY}px)`;
     const worldClone = this.els.world.cloneNode(true);
     worldClone.style.transform = "none";
-    for (const dot of worldClone.querySelectorAll(".connect-dot, .resize-handle, .line-handle")) dot.remove();
+    for (const dot of worldClone.querySelectorAll(".connect-dot, .resize-handle, .line-handle, .segment-handle, .vertex-handle")) dot.remove();
     inner.appendChild(worldClone);
     canvasClone.appendChild(inner);
 

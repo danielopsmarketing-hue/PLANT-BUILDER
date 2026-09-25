@@ -506,7 +506,9 @@ body {
 .node:hover .connect-dot,
 .node.selected .connect-dot,
 .shape:hover .connect-dot,
-.shape.selected .connect-dot {
+.shape.selected .connect-dot,
+.junction-node:hover .connect-dot,
+.junction-node.selected .connect-dot {
   opacity: 1;
   transform: scale(1);
 }
@@ -578,6 +580,22 @@ body {
   overflow: hidden;
 }
 
+/* Junction: an explicit merge/branch point connectors can share as an
+   endpoint -- a small solid dot, distinct from the arc-hop rendered where
+   two unrelated connectors' paths merely cross (see computeCrossingBridges
+   in app.js). */
+.junction-node {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--text);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+}
+.junction-node:active { cursor: grabbing; }
+.junction-node.selected { outline: 2px dashed var(--brand-accent); outline-offset: 3px; }
+.junction-node.connect-target { outline: 3px solid #16a34a; outline-offset: 3px; }
+
 .free-line.selected { filter: drop-shadow(0 0 0 1px var(--brand-accent)) drop-shadow(0 0 3px var(--brand-accent)); }
 
 .line-handle {
@@ -609,6 +627,7 @@ body {
 .inspector-specs td:last-child { text-align: right; font-weight: 600; }
 
 .inspector-position { font-size: 13.5px; color: var(--text-muted); margin-bottom: 16px; }
+.inspector-hint { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 16px; }
 
 .inspector-actions {
   display: grid;

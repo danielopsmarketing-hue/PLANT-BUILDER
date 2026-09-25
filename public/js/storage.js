@@ -20,7 +20,7 @@ export async function listLayouts() {
 }
 
 export async function saveLayout(name, state) {
-  const data = { nodes: state.nodes, connectors: state.connectors, shapes: state.shapes, lines: state.lines };
+  const data = { nodes: state.nodes, connectors: state.connectors, shapes: state.shapes, lines: state.lines, junctions: state.junctions };
   if (state.id) {
     const updated = await fetch(`${BASE}/${state.id}`, {
       method: "PUT",
