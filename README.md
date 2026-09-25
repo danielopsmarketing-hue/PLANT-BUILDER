@@ -507,6 +507,55 @@ Not a correctness issue, just a cosmetic gap for a follow-up pass.
 (core canvas engine, Phase 2e save/load/autosave) re-run green after
 every change.
 
+## AI plant input (Phase 5)
+
+Natural-language plant description → real catalog equipment → a preview
+on the canvas the user explicitly confirms or cancels, per Stream 1's
+"never invent equipment" and "preview before committing" requirements.
+
+**5a — search_equipment + flow-stage metadata.** `GET
+/api/equipment/search?q=&category=&limit=` (auth required) is the one
+lookup tool any equipment-identifying code — the stub today, a real
+model later — is allowed to use; it can only return real catalog rows.
+Each category in `server/seed-data.js` also carries a `flowStage`
+number, a hint for default left-to-right sequencing.
+
+**5b — plant-specification schema + translator.** `public/js/ai-plan.js`
+turns a structured spec (`{ equipment: [{ref, equipmentId}], connections:
+[{from, to}], notes: [{text, near}] }`) into Command Layer batches —
+auto-laid-out in flow-stage columns, placed beside whatever's already on
+the canvas. Every `equipmentId` is checked against the live catalog a
+second time here, independent of search_equipment.
+
+**5c — the input panel.** The "AI Assistant" toolbar button opens a
+prompt → "Generate Draft" → live canvas preview → explicit Confirm/
+Cancel flow, using the Phase 4a/4b command layer's preview/commit/discard
+so a confirmed draft is exactly one undo step and a cancelled one leaves
+the canvas untouched.
+
+**5d — wiring a real LLM provider — intentionally not done.** `server/ai.js`
+today is a stub: it splits the prompt into phrases on commas/"then"/
+"into"/etc. and calls `db.search` (the same lookup a real model would
+call) for each, so the whole pipeline above is real and tested, but
+there's no actual language model behind it — clearly labeled as such in
+the UI ("Draft mode" badge) and in code. This was an explicit standing
+constraint from early in this project (agreed default: stub AI responses
+until a provider decision is made) and still holds — no API key or
+provider has been chosen, so no outbound call to one has been wired up.
+`planFromPrompt(prompt)` is the one function a real integration would
+replace; everything upstream (the panel) and downstream (the translator,
+the command layer) is already built against that exact interface, so the
+swap is scoped to that one file. Needs a decision below before it can move.
+
+**Tested:** search_equipment (14-point API test), the spec translator
+(22-point Playwright pass — valid/invalid/duplicate refs, flow-stage
+column layout, note placement, preview/discard/commit as one step), and
+the full panel (20-point Playwright pass — generate/preview/confirm/
+cancel, undo of a confirmed draft, a no-match prompt correctly disabling
+Confirm, regenerating replacing rather than stacking a draft) — plus the
+full accumulated regression suite from every earlier phase, re-run green
+after each of 5a/5b/5c.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now
@@ -562,9 +611,17 @@ near-term backend pieces:
   specs, product photos, brochure links, and stock-check links are still
   empty — the admin UI is ready for all of these, someone needs to fill
   them in (see "Product images" above for photos specifically).
-- Whether reps can see each other's customer layouts, or only their own —
-  this determines the data model for saved-layout persistence and hasn't
-  been decided.
+- ~~Whether reps can see each other's customer layouts, or only their
+  own~~ — implemented as owner-only by default (`/api/plants`), with
+  admin/manager able to see everyone's via `/api/plants-all` (Phase 2d);
+  the "All Plants" view that actually exposes that to a manager in the UI
+  is still Phase 6b. Flag if owner-only isn't the right default.
 - ~~Hosting preference~~ — Railway, see "Deploying" above.
+- **Which LLM provider for the real AI plant-input feature (Phase 5d)** —
+  Anthropic, OpenAI, or another provider, plus confirmation that
+  supplying/storing an API key (as a Railway environment variable, same
+  as `ADMIN_USERNAME`/`BOOTSTRAP_ADMIN_PASSWORD`) is okay. Nothing calls
+  out to any provider today (see "AI plant input" above) — this is the
+  one thing blocking that from moving past its current stub.
 
 Answering the rest unblocks the remaining backend/auth work.
