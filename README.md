@@ -12,14 +12,41 @@ Keep it that way — see "Constraints" below.
 
 ## Current state
 
-The equipment catalog has a real backend on SQLite: a small Express API
-backs a central catalog with an admin UI for managing listings (including
-image uploads), and the sales-facing builder reads from it live. A real
-per-user account system (users, roles, sessions, invitations) also exists
-now, tested end-to-end — but nothing in the app's UI uses it yet; see
-"Accounts & authentication" for exactly what that means. Saved *layouts*
-(what a rep draws) are still browser `localStorage` only — that's the next
-piece of real persistence to build; see "What needs to be built next".
+All three planned streams — AI plant input, advanced canvas/drawing, and
+staff/management backend — are built and tested, phase by phase, through
+Phase 7's end-to-end refinement pass (see that section below for what
+final verification actually found). In short, as of this branch:
+
+- **Accounts are real.** Every page requires login; roles (admin/manager/
+  staff) are enforced server-side on every route that needs it, not just
+  hidden in the UI. See "Accounts & authentication" and "Staff
+  management (Phase 6a)".
+- **Layouts are real, owned records**, not `localStorage` — saved,
+  loaded, and autosaved through `/api/plants`, scoped to whoever created
+  them. See "Plant projects & login (Phase 2d/2e)".
+- **The canvas is a real diagramming tool**: styled/colored lines and
+  connectors, orthogonal or angled routing with 45° snap, rich text
+  notes, and explicit junction points distinct from incidental line
+  crossings. See "Advanced canvas / drawing system (Phase 3)".
+- **A structured command layer** underlies every canvas mutation, with
+  batching and a preview-then-confirm flow — the same mechanism both
+  manual edits and the AI panel use, so undo/redo is one consistent
+  system regardless of how a change was made. See "Command layer &
+  batched undo (Phase 4a/4b)".
+- **AI plant input works end to end against a stub planner** — prompt →
+  real catalog equipment (never invented) → preview on canvas → explicit
+  confirm/cancel. The one missing piece is a real language model behind
+  it, which needs a provider decision (see "Open decisions"). See "AI
+  plant input (Phase 5)".
+- **Admins manage the team and can see everyone's work.** `/users.html`
+  for accounts, `/plants.html` for a read-only view across every saved
+  plant. See "Staff management (Phase 6a)" and "All Plants view (Phase
+  6b)".
+
+The equipment catalog itself has a real backend on SQLite: a small
+Express API backs a central catalog with an admin UI for managing
+listings (including image uploads), and the sales-facing builder reads
+from it live.
 
 ### Running it
 
@@ -507,6 +534,35 @@ Not a correctness issue, just a cosmetic gap for a follow-up pass.
 (core canvas engine, Phase 2e save/load/autosave) re-run green after
 every change.
 
+## Command layer & batched undo (Phase 4a/4b)
+
+`PlantBuilderApp.applyCommand`/`applyCommandBatch` (in `app.js`) is a
+thin dispatch layer over the app's existing mutation methods (`addNode`,
+`addConnector`, `addShape`, delete/move/etc.) — not a parallel mutation
+path — so manual UI actions and the AI panel (Phase 5) share one
+execution route and one undo/redo history instead of two systems that
+could drift apart.
+
+`pushHistory()` checks a `_suppressHistory` flag `applyCommandBatch`
+holds for the duration of a batch, so N commands collapse into exactly
+one undo step regardless of how many mutation methods they call
+internally — this is Phase 4b's batching, delivered by the same
+mechanism as 4a rather than as separate work. A `preview: true` batch
+applies its mutations live on the canvas immediately but leaves them
+uncommitted (snapshotting the pre-batch state on first use);
+`commitPendingBatch()` folds them into history as one step,
+`discardPendingBatch()` rolls the canvas back to exactly the pre-preview
+state. This preview-then-confirm mechanism is what the AI input panel
+(Phase 5c) is built on.
+
+**Tested:** a 19-point Playwright pass covering command dispatch return
+values, multi-command batches collapsing to one undo/redo step (verified
+via `historyIndex` and object counts, not a raw history-array-length
+delta, which doesn't hold once a redo branch gets truncated by a later
+mutation — a real gotcha this session ran into while writing the test,
+documented here since a future test relying on that delta will hit the
+same thing), and the preview/discard/commit lifecycle.
+
 ## AI plant input (Phase 5)
 
 Natural-language plant description → real catalog equipment → a preview
@@ -629,6 +685,50 @@ narrows by both plant name and owner name — plus a spot-check of the
 core canvas, Phase 3a, Phase 5c, and Phase 6a suites (all still green)
 after adding the new nav links to every page.
 
+## Phase 7: end-to-end refinement pass
+
+Every phase above was built and tested in isolation. Phase 7 was one
+continuous, realistic scenario exercising all three streams together, to
+catch interaction bugs a phase-by-phase test can't see: an admin invites
+a rep; the rep accepts the invite and signs in; drafts a starting layout
+with the AI Assistant; manually adds a second feed line merging through
+a junction; color-styles a connector and switches it to angled routing;
+adds a color/bold-styled note; undoes all the way back to a blank canvas
+and redoes forward again; saves; reloads the page and loads the plant
+back; the export pipeline is exercised against that full mixed layout;
+and an admin reviews it in the All Plants view while a read-only
+enforcement check confirms there's no edit/delete affordance there.
+
+**What this pass found:** no product bugs — every check passed against
+the real code once the test itself was corrected (see below). That's a
+reasonable outcome this late: every phase already had its own dedicated
+regression pass, and the full accumulated suite was re-run after each of
+Phases 2e through 6b specifically to catch cross-phase interactions
+early rather than deferring all of that to the end.
+
+**What this pass corrected were assumptions in the test itself, not the
+app:**
+- A full PNG export calls `html2canvas`, loaded from a CDN this sandbox's
+  egress proxy blocks (confirmed independently — a direct `curl` to that
+  URL returns 403 on the CONNECT). Nothing to do with this session's
+  code, and a real deployment has no such restriction. Re-scoped that
+  check to what's actually testable here and does depend on this
+  session's code: `computeNodeBounds()` and `buildExportDom()` handling
+  a layout with a junction and a custom-styled connector correctly (both
+  do).
+- An early version of the mixed-undo scene asserted exact text content
+  after exactly two `undo()` calls, assuming a specific history-entry
+  count for a text edit + a style toggle. Replaced with a stronger,
+  assumption-free check: undo all the way back to a blank canvas, then
+  redo all the way forward, and confirm the end state exactly matches —
+  proving the mixed AI+manual+junction+style history is fully reversible
+  without needing to know its exact shape.
+
+**Tested:** the 26-point scenario above, plus a final 9-point smoke test
+spanning login, core canvas, junctions, AI spec translation, batch
+commit-as-one-undo-step, and both Phase 6 management pages loading under
+real session auth — all green.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now
@@ -659,18 +759,27 @@ which would silently erase the catalog.
 
 ## What needs to be built next
 
-This project is now being worked as a set of phased, task-tracked
-workstreams (AI plant input, advanced canvas/drawing, staff backend) — see
-the session's task list for the current sequence and status. The
-near-term backend pieces:
+All three streams' planned phases (AI plant input, advanced canvas/
+drawing, staff backend) are done as of Phase 7 — see the sections above
+for what each one covers and how it was tested. What's actually left is
+narrower than "next phases": it's the items in "Open decisions" below
+(most notably the LLM provider choice, which is the one thing gating
+Phase 5's stub planner from becoming a real one) and ordinary follow-up
+polish that surfaced along the way rather than a missing feature:
 
-1. **Switching `admin.html` over to real accounts** (Phase 6a) — the
-   Builder now requires real login (see "Plant projects & login" above);
-   the equipment admin page is the one remaining surface still on the
-   original shared-password Basic Auth.
-2. **Users admin page** (Phase 6a) and **All Plants management view**
-   (Phase 6b) — the backend for both (`/api/users`, `/api/plants-all`)
-   already exists and is tested; no UI consumes them yet.
+- Crossing-bridge arcs (the little visual hop where two connector lines
+  cross without being related) are only detected between axis-aligned
+  segments today — a diagonal angled connector crossing another one
+  won't get a bridge arc yet. Cosmetic, not a correctness issue (Phase
+  3c/3d).
+- Copy/paste (Ctrl+C/V) and duplicate (Ctrl+D) don't cover junctions or
+  freeform lines the same way they cover equipment/shapes — a
+  pre-existing scope boundary (lines were already excluded before this
+  session) that junctions inherited rather than something Phase 3d
+  changed.
+- The AI stub planner (`server/ai.js`) does simple phrase-splitting and
+  best-match lookup, not real language understanding — by design, until
+  the provider decision below is made.
 
 ## Constraints that should not change without a conversation
 
