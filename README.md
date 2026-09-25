@@ -460,6 +460,53 @@ still the original shared-password Basic Auth — switching it to
 since that's the natural place to also expose role management in the UI
 rather than just cutting the gate over with nothing to manage it yet.
 
+## Advanced canvas / drawing system (Phase 3)
+
+Four increments toward the technical-diagramming feature set (Stream 2 of
+the phased plan), all in `public/js/app.js`:
+
+**3a — Line/connector style system.** Connectors and freeform lines carry
+a `style` object (`strokeColor`, `strokeWidth`, `lineType`: solid/dashed/
+dotted, `arrowStart`/`arrowEnd`) instead of a fixed look. A contextual
+"Style" panel in the Inspector edits it live — preset swatches plus a
+full color picker, thickness/dash selects, arrow toggles — and extends to
+multi-select: selecting several connectors/lines together edits all of
+them at once. Arrowhead markers are generated per color so they match
+the line rather than always being dark gray.
+
+**3b — Rich text styling.** Shapes (rectangle/ellipse/note/stockpile)
+carry a `textStyle` object (font size, bold, italic, color, alignment),
+editable the same way, including multi-select common-property editing.
+
+**3c — Angled/diagonal routing.** Each connector now has an independent
+`routing.style`: `"orthogonal"` (default, unchanged Manhattan Z-bend) or
+`"angled"` (a direct point-to-point line by default; manual bends are
+free vertex handles that snap to the nearest 45° ray from the previous
+point, Alt for unsnapped). Toggled per connector from a "Routing" select
+in its Inspector panel.
+
+**3d — Explicit junction nodes.** A new "Junction" tool drops a small
+fixed-size dot that connectors can attach to as a first-class endpoint,
+same as equipment/shapes — a deliberate merge/branch point (e.g. two
+feeds joining before one crusher). It reuses the existing box
+abstraction (`getBox`, selection, drag, align, duplicate, z-order,
+rubber-band select) rather than a parallel code path. The junction-vs-
+crossing distinction the spec calls for falls out of existing logic:
+`computeCrossingBridges` already skips connectors sharing an endpoint
+id, so connectors meeting at a junction render as a solid point while
+two unrelated connectors whose paths merely cross still get the small
+arc-hop.
+
+**Known limitation carried from 3c:** crossing-bridge arcs are only
+detected between axis-aligned (orthogonal) segments today — a diagonal
+angled segment crossing another connector won't get a bridge arc yet.
+Not a correctness issue, just a cosmetic gap for a follow-up pass.
+
+**Tested:** each sub-phase has its own Playwright pass (12/12, 13/13,
+11/11, 13/13 respectively) plus the full accumulated regression suite
+(core canvas engine, Phase 2e save/load/autosave) re-run green after
+every change.
+
 ## Deploying (Railway)
 
 Two things the host needs to support, because the catalog store (now
