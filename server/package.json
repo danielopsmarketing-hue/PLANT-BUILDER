@@ -9,10 +9,15 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "pretest": "node -e \"const fs=require('fs');for(const d of ['tests/.tmp-data','tests/.tmp-uploads'])fs.rmSync(d,{recursive:true,force:true});\"",
+    "test": "playwright test"
   },
   "dependencies": {
     "express": "^4.19.2",
     "multer": "^2.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
   }
 }

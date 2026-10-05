@@ -11,7 +11,9 @@ const ai = require("./ai");
 const { CATEGORIES } = require("./seed-data");
 
 const PORT = process.env.PORT || 4000;
-const UPLOADS_DIR = path.join(__dirname, "uploads");
+// Overridable for the same reason as database.js's DATA_DIR -- test
+// isolation (server/tests/) -- unset in normal use.
+const UPLOADS_DIR = process.env.PLANT_BUILDER_UPLOADS_DIR || path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);

@@ -16,7 +16,11 @@ const fs = require("fs");
 const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
-const DATA_DIR = path.join(__dirname, "data");
+// Overridable so the test suite (server/tests/) can point each run at an
+// isolated temp directory instead of the real server/data/ -- same
+// pattern as PORT already uses. Unset in normal/production use, so
+// behavior is unchanged from before this existed.
+const DATA_DIR = process.env.PLANT_BUILDER_DATA_DIR || path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "plantbuilder.db");
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });

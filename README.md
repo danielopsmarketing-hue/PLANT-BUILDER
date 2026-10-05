@@ -42,6 +42,10 @@ final verification actually found). In short, as of this branch:
   for accounts, `/plants.html` for a read-only view across every saved
   plant. See "Staff management (Phase 6a)" and "All Plants view (Phase
   6b)".
+- **All of the above is covered by a committed, CI-run test suite** —
+  `server/tests/` (`cd server && npm test`), not just the scratchpad
+  scripts the project was originally built and verified with. See
+  "Automated test suite" below.
 
 The equipment catalog itself has a real backend on SQLite: a small
 Express API backs a central catalog with an admin UI for managing
@@ -728,6 +732,70 @@ app:**
 spanning login, core canvas, junctions, AI spec translation, batch
 commit-as-one-undo-step, and both Phase 6 management pages loading under
 real session auth — all green.
+
+## Automated test suite
+
+Every phase above (and Phase 7's scenario) was verified with real
+Playwright checks at the time it was built, but run ad hoc from
+scratchpad scripts — never committed, so none of that verification was
+runnable by anyone else, or by a later session, or in CI. `server/tests/`
+replaces that with a real `@playwright/test` suite that lives in the repo:
+
+```
+cd server
+npm install
+npm test
+```
+
+`npm test` runs `pretest` first (wipes `server/tests/.tmp-data` and
+`.tmp-uploads`, the isolated SQLite DB and upload dir the suite uses —
+see below for why this has to happen *before* Playwright starts, not via
+its `globalSetup`), then starts the real `server.js` against that empty
+database via Playwright's `webServer`, with a bootstrap admin account
+(`BOOTSTRAP_ADMIN_EMAIL`/`PASSWORD`, test-only credentials set in
+`playwright.config.js`) and runs every spec in `server/tests/`:
+
+- `canvas-core.spec.js` — equipment placement, connector routing,
+  junctions (merge without crossing-bridge arcs, cascade-delete), undo/
+  redo, no uncaught page errors.
+- `canvas-styling.spec.js` — the connector/note style panels, a style
+  edit as one undo step, angled routing + 45° waypoint snapping.
+- `command-layer.spec.js` — a multi-command batch as one undo step, and
+  the preview → commit/discard flow the AI panel is built on.
+- `accounts.spec.js` — login success/failure, the invite → set-password
+  flow, an admin changing a user's role, deactivation blocking a
+  subsequent login, and a 403 on an admin-only API from a staff session.
+- `plants-persistence.spec.js` — save/load against the real `/api/plants`
+  backend (not `localStorage`), autosave, and ownership isolation between
+  two different users' saved layouts.
+- `ai-plan.spec.js` — the stub planner never returns equipment outside
+  the real catalog (and reports unmatched phrases instead of guessing),
+  `/api/ai/plan` requires auth, `planSpecToCommands` drops an invalid
+  `equipmentId` with a warning, and the AI panel's prompt → preview →
+  confirm/cancel flow (confirm commits as one undo step, cancel discards
+  the preview entirely).
+- `admin-pages.spec.js` — role gating on `admin.html`/`users.html`/
+  `plants.html` (UI and direct API calls alike), and that All Plants
+  shows every user's layouts, not just the viewer's own.
+
+**A real bug this suite caught in itself, not the app:** the first version
+used a Playwright `globalSetup` to wipe the temp data directory before
+each run. `globalSetup` and `webServer` startup aren't ordered relative to
+each other, and the server routinely won that race — it would boot,
+bootstrap the admin account, and then have its data directory deleted out
+from under its already-open SQLite handle. Reads kept working (cached
+pages), but every write failed with `attempt to write a readonly
+database`, because SQLite could no longer create a journal file in a
+directory that no longer existed — which is a real, reproducible failure
+mode for anything that opens a file and later finds its containing
+directory gone, not specific to this test suite. Fixed by moving the
+cleanup into an npm `pretest` script, which runs to completion as its own
+process before `playwright test` is even invoked, so there's nothing left
+to race.
+
+CI runs this same `npm test` on every push via
+`.github/workflows/test.yml` (Node 22.11, Playwright's own managed
+Chromium rather than this dev sandbox's pre-installed one).
 
 ## Deploying (Railway)
 

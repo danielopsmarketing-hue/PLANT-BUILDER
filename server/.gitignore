@@ -1,0 +1,4 @@
+tests/.tmp-data/
+tests/.tmp-uploads/
+test-results/
+playwright-report/
