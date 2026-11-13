@@ -7,7 +7,11 @@ steps) and this doc points into it rather than repeating it.
 `FEATURE-REVIEW.md` (same directory) is a follow-up review of
 permissions/navigation/saving and the drag-and-drop canvas, with concrete
 gaps found and a suggested priority order for what to build next — read
-that before picking a first task.
+that before picking a first task. `DATA-MODEL.md` is the full schema/API
+reference — every database table, every JSON shape passed between
+frontend and backend, and every HTTP route — written assuming zero prior
+context, so you don't have to reverse-engineer the data model from
+source before making a change.
 
 ## TL;DR
 
