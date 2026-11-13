@@ -4,6 +4,10 @@ Written for whichever agent (or person) picks this project up next. Read
 this first — it's the orientation layer. `README.md` is the deep
 reference (architecture, every phase's design rationale, full deploy
 steps) and this doc points into it rather than repeating it.
+`FEATURE-REVIEW.md` (same directory) is a follow-up review of
+permissions/navigation/saving and the drag-and-drop canvas, with concrete
+gaps found and a suggested priority order for what to build next — read
+that before picking a first task.
 
 ## TL;DR
 
